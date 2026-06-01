@@ -4,6 +4,8 @@ import { prisma } from "@/db/client"
 import { apiSuccess, createUserRouteHandler } from "@/lib/api-route"
 import { getAiReplyConfig } from "@/lib/ai-reply-config"
 import { getServerSiteSettings } from "@/lib/site-settings"
+import { getPublicUserRoleBadgeLabel } from "@/lib/user-presentation"
+import { applyHookedUserPresentationToNamedItem } from "@/lib/user-presentation-server"
 
 const MENTION_SEARCH_LIMIT = 10
 
@@ -13,18 +15,6 @@ function normalizeQuery(request: Request) {
 
 function buildDisplayName(user: { username: string; nickname: string | null }) {
   return user.nickname?.trim() || user.username
-}
-
-function getRoleLabel(role: UserRole) {
-  if (role === UserRole.ADMIN) {
-    return "站长/管理员"
-  }
-
-  if (role === UserRole.MODERATOR) {
-    return "版主"
-  }
-
-  return "用户"
 }
 
 function getMatchScore(user: { username: string; nickname: string | null }, query: string) {
@@ -158,6 +148,25 @@ export const GET = createUserRouteHandler(async ({ request, currentUser }) => {
   ])
 
   const botUserMap = new Map(botUsers.map((user) => [user.id, user]))
+  const [presentedStaffUsers, presentedMatchedUsers] = await Promise.all([
+    Promise.all(staffUsers.map((user) => applyHookedUserPresentationToNamedItem({
+      id: user.id,
+      username: user.username,
+      displayName: buildDisplayName(user),
+      role: user.role,
+      status: UserStatus.ACTIVE,
+    }))),
+    Promise.all(matchedUsers.map((user) => applyHookedUserPresentationToNamedItem({
+      id: user.id,
+      username: user.username,
+      displayName: buildDisplayName(user),
+      role: user.role,
+      status: UserStatus.ACTIVE,
+      level: "level" in user ? user.level : null,
+    }))),
+  ])
+  const presentedStaffUserMap = new Map(presentedStaffUsers.map((user) => [user.id, user]))
+  const presentedMatchedUserMap = new Map(presentedMatchedUsers.map((user) => [user.id, user]))
   const bots = config.agents
     .map((agent) => {
       const user = agent.agentUserId ? botUserMap.get(agent.agentUserId) : null
@@ -178,15 +187,22 @@ export const GET = createUserRouteHandler(async ({ request, currentUser }) => {
 
   return apiSuccess({
     bots,
-    staff: staffUsers.map((user) => ({
-      kind: "staff" as const,
-      id: user.id,
-      label: buildDisplayName(user),
-      displayName: buildDisplayName(user),
-      username: user.username,
-      nickname: user.nickname,
-      roleLabel: getRoleLabel(user.role),
-    })),
+    staff: staffUsers.map((user) => {
+      const presentedUser = presentedStaffUserMap.get(user.id)
+
+      return {
+        kind: "staff" as const,
+        id: user.id,
+        label: presentedUser?.displayName ?? buildDisplayName(user),
+        displayName: presentedUser?.displayName ?? buildDisplayName(user),
+        username: user.username,
+        nickname: user.nickname,
+        roleLabel: getPublicUserRoleBadgeLabel({
+          role: user.role,
+          roleBadge: presentedUser?.roleBadge,
+        }),
+      }
+    }),
     users: matchedUsers
       .sort((a, b) => {
         if (useCustomDefaultChoices) {
@@ -206,15 +222,22 @@ export const GET = createUserRouteHandler(async ({ request, currentUser }) => {
         return a.id - b.id
       })
       .slice(0, MENTION_SEARCH_LIMIT)
-      .map((user) => ({
-        kind: "user" as const,
-        id: user.id,
-        label: buildDisplayName(user),
-        displayName: buildDisplayName(user),
-        username: user.username,
-        nickname: user.nickname,
-        roleLabel: user.role === UserRole.USER ? null : getRoleLabel(user.role),
-      })),
+      .map((user) => {
+        const presentedUser = presentedMatchedUserMap.get(user.id)
+
+        return {
+          kind: "user" as const,
+          id: user.id,
+          label: presentedUser?.displayName ?? buildDisplayName(user),
+          displayName: presentedUser?.displayName ?? buildDisplayName(user),
+          username: user.username,
+          nickname: user.nickname,
+          roleLabel: getPublicUserRoleBadgeLabel({
+            role: user.role,
+            roleBadge: presentedUser?.roleBadge,
+          }),
+        }
+      }),
   })
 }, {
   errorMessage: "用户搜索失败",

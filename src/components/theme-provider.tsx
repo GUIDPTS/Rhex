@@ -24,10 +24,12 @@ import {
   DEFAULT_THEME_RUNTIME_SETTINGS,
   THEME_STORAGE_KEY,
   applyTheme,
+  getThemeDefaultsFromRuntime,
   notifyThemeSettingsChanged,
   readThemeLocalSettingsSnapshot,
   resolveStoredThemePreference,
   subscribeThemeSettings,
+  type ThemeDefaultDevice,
   type ThemeMode,
   type ThemePreference,
   type ThemeRuntimeSettings,
@@ -74,7 +76,15 @@ export function useTheme(): ThemeContextValue {
   }
 }
 
-export function ThemeProvider({ children, settings: themeSettings }: { children: ReactNode; settings?: ThemeRuntimeSettings }) {
+export function ThemeProvider({
+  children,
+  defaultDevice = "desktop",
+  settings: themeSettings,
+}: {
+  children: ReactNode
+  defaultDevice?: ThemeDefaultDevice
+  settings?: ThemeRuntimeSettings
+}) {
   return (
     <NextThemesProvider
       attribute="class"
@@ -86,14 +96,20 @@ export function ThemeProvider({ children, settings: themeSettings }: { children:
       themes={["light", "dark"]}
     >
       <ThemeSettingsContext.Provider value={themeSettings}>
-        <ThemeRuntimeSync settings={themeSettings} />
+        <ThemeRuntimeSync defaultDevice={defaultDevice} settings={themeSettings} />
         {children}
       </ThemeSettingsContext.Provider>
     </NextThemesProvider>
   )
 }
 
-function ThemeRuntimeSync({ settings: themeSettings }: { settings?: ThemeRuntimeSettings }) {
+function ThemeRuntimeSync({
+  defaultDevice,
+  settings: themeSettings,
+}: {
+  defaultDevice: ThemeDefaultDevice
+  settings?: ThemeRuntimeSettings
+}) {
   const {
     resolvedTheme: nextResolvedTheme,
     setTheme: setNextTheme,
@@ -101,10 +117,17 @@ function ThemeRuntimeSync({ settings: themeSettings }: { settings?: ThemeRuntime
   } = useNextTheme()
   const syncedInitialThemeRef = useRef(false)
   const serverSnapshot = useMemo(
-    () => themeSettings
-      ? { ...DEFAULT_THEME_LOCAL_SETTINGS_SNAPSHOT, preset: themeSettings.preset, fontSizePreset: themeSettings.fontSizePreset }
-      : DEFAULT_THEME_LOCAL_SETTINGS_SNAPSHOT,
-    [themeSettings],
+    () => {
+      const runtimeSettings = themeSettings ?? DEFAULT_THEME_RUNTIME_SETTINGS
+      const defaults = getThemeDefaultsFromRuntime(runtimeSettings, { device: defaultDevice })
+
+      return {
+        ...DEFAULT_THEME_LOCAL_SETTINGS_SNAPSHOT,
+        preset: defaults.preset,
+        fontSizePreset: defaults.fontSizePreset,
+      }
+    },
+    [defaultDevice, themeSettings],
   )
   const localSettings = useSyncExternalStore(
     subscribeThemeSettings,

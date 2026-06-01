@@ -6,7 +6,7 @@
 - `slot`：插入 UI 块
 - `surface`：覆盖宿主默认 UI 区块
 - `action hook`：在生命周期点执行副作用逻辑
-- `waterfall`：同步串行改写数据
+- `waterfall`：串行改写数据；transform 可同步返回，也可返回 Promise
 - `asyncWaterfall`：异步串行改写数据
 
 说明：
@@ -94,9 +94,13 @@
 | `points.change.after` | points | 用户积分变更（获得/扣除）后执行副作用 | `void` |
 | `upload.file.before` | upload | 文件上传前执行副作用或拦截逻辑（可用于类型/大小/黑名单预检） | `void` |
 | `upload.file.after` | upload | 文件上传完成后执行副作用逻辑（payload 含 fileId/url） | `void` |
+| `addon.installed.before` | system | 插件安装、升级或覆盖写入前执行副作用或拦截逻辑 | `void` |
 | `addon.installed.after` | system | 插件安装完成后执行副作用逻辑 | `void` |
+| `addon.uninstalled.before` | system | 插件物理卸载前执行副作用或拦截逻辑 | `void` |
 | `addon.uninstalled.after` | system | 插件卸载完成后执行副作用逻辑 | `void` |
+| `addon.enabled.before` | system | 插件启用前执行副作用或拦截逻辑 | `void` |
 | `addon.enabled.after` | system | 插件启用后执行副作用逻辑 | `void` |
+| `addon.disabled.before` | system | 插件禁用前执行副作用或拦截逻辑 | `void` |
 | `addon.disabled.after` | system | 插件禁用后执行副作用逻辑 | `void` |
 | `addon.api.request.before` | addon | 插件 API 命中后、处理器执行前触发；可用于审计预检或阻断 | `void` |
 | `addon.api.request.after` | addon | 插件 API 请求结束后触发，payload 含 status / matched / errorMessage | `void` |
@@ -126,6 +130,12 @@
 | `user.profile.introduction.value` | user | 串行改写用户个人介绍（资料写入前；可返回空串清空） | `string` |
 | `user.displayName.value` | user | 串行改写用户展示名（用于列表/详情渲染前的显示加工） | `string` |
 | `user.avatar.url.value` | user | 串行改写用户头像 URL（可插入 CDN 前缀、占位头像等） | `string` |
+| `user.publicUid.value` | user | 串行改写用户公开 UID 展示值；只影响前台展示，不改变真实 `User.id` | `string` |
+| `user.levelBadge.value` | user | 串行改写用户公开等级徽章展示快照；只影响前台展示，不改变真实等级 | `AddonPublicUserLevelBadge \| null` |
+| `user.verificationBadge.value` | user | 串行改写用户公开认证徽章展示快照；只影响前台展示，不改变真实认证记录 | `AddonPublicUserVerificationBadge \| null` |
+| `user.displayedBadges.items` | user | 串行改写用户公开展示勋章 / 称号列表；只影响前台展示，不改变真实勋章授予 | `AddonPublicUserDisplayedBadge[]` |
+| `user.roleBadge.value` | user | 串行改写用户公开角色徽标展示快照；只影响前台展示，不改变真实权限角色 | `AddonPublicUserRoleBadge \| null` |
+| `user.identityTags.items` | user | 串行改写用户公开身份标签列表；只影响前台展示 | `AddonPublicUserIdentityTag[]` |
 | `search.query.normalize` | search | 串行规范化搜索关键词（大小写、同义词、繁简转换等） | `string` |
 | `seo.meta.title` | seo | 串行改写 SEO `<title>` | `string` |
 | `seo.meta.description` | seo | 串行改写 SEO meta description | `string` |
@@ -138,6 +148,9 @@
 - `report.reasonDetail.value` 即使初始补充说明为空也会执行；插件可以基于 `reasonType`、`targetType` 自动补全模板化说明。
 - `user.profile.bio.value` 与 `user.profile.introduction.value` 允许返回空串，宿主会按“显式清空”处理，不会自动回退到旧值。
 - `user.profile.nickname.value` 仍沿用非空保护；插件若返回空串，宿主会保留原始昵称继续后续校验。
+- `user.publicUid.value` 是公开展示层 hook，默认值为格式化后的真实用户 ID；插件返回值会被宿主裁剪到 32 个字符以内并折叠空白。
+- `user.levelBadge.value`、`user.verificationBadge.value`、`user.displayedBadges.items`、`user.roleBadge.value`、`user.identityTags.items` 与 `user.publicUid.value` 同属公开身份展示管线；payload 当前包含 `userId`、`username`、`role`、`status`、`level`、`vipLevel`、`badges`。插件可用这些字段做展示规则，但返回值不会影响权限、外键、链接、订单、积分、消息、关注、后台审计、真实等级、真实认证、真实勋章授予、真实角色或封禁/禁言状态。
+- `user.roleBadge.value` 返回 `undefined` 表示保留上一个值，返回 `null` 表示显式隐藏公开角色徽标，返回对象表示使用插件给出的公开角色徽标快照。
 
 ## AsyncWaterfall
 

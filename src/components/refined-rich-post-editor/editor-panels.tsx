@@ -114,11 +114,11 @@ export function Base64Dialog({
 
           const nextUsers = Array.isArray(result?.data?.users)
             ? result.data.users
-                .map((user: { id?: unknown; username?: unknown; displayName?: unknown; role?: unknown; isPostAuthor?: unknown }) => ({
+                .map((user: { id?: unknown; username?: unknown; displayName?: unknown; roleLabel?: unknown; isPostAuthor?: unknown }) => ({
                   id: Number(user.id),
                   username: typeof user.username === "string" ? user.username : "",
                   displayName: typeof user.displayName === "string" ? user.displayName : "",
-                  role: user.role === "ADMIN" || user.role === "MODERATOR" || user.role === "USER" ? user.role : undefined,
+                  roleLabel: typeof user.roleLabel === "string" && user.roleLabel.trim() ? user.roleLabel.trim() : null,
                   isPostAuthor: user.isPostAuthor === true,
                 }))
                 .filter((user: PrivateReplyRecipient) => Number.isInteger(user.id) && user.id > 0 && user.username && user.displayName)
@@ -276,7 +276,7 @@ export function Base64Dialog({
                           <span className="min-w-0 truncate">{user.displayName}</span>
                           <span className="flex shrink-0 items-center gap-1">
                             {user.isPostAuthor ? <Badge variant="secondary">楼主</Badge> : null}
-                            {user.role === "ADMIN" ? <Badge variant="outline">管理员</Badge> : null}
+                            {user.roleLabel ? <Badge variant="outline">{user.roleLabel}</Badge> : null}
                           </span>
                         </button>
                       ))

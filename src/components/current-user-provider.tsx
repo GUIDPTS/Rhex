@@ -4,16 +4,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 
 import { InboxRealtimeProvider } from "@/components/inbox-realtime-provider"
 import type { SiteSettingsData } from "@/lib/site-settings.types"
+import type { PublicUserRoleBadge } from "@/lib/user-presentation"
 import type { UserSurfaceSnapshot } from "@/lib/user-surface"
 
 export interface CurrentUserClient {
   id: number
+  publicUid?: string | null
   username: string
   nickname: string | null
+  displayName?: string | null
   avatarPath: string | null
   role: string
+  roleBadge?: PublicUserRoleBadge | null
   status: string
   level: number
+  levelBadgeLevel?: number | null
   levelName: string | null
   levelColor: string | null
   levelIcon: string | null

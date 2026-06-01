@@ -33,6 +33,7 @@ export interface ForumFeedItem {
   boardIcon: string
   authorName: string
   authorUsername: string
+  authorPublicUid?: string | null
   authorAvatarPath: string | null
   authorStatus?: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
   authorVipLevel?: number | null

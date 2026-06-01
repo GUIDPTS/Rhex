@@ -21,6 +21,7 @@ import { getLocalDateKey, getMonthKey, getMonthTitle } from "@/lib/date-key"
 import { buildLoginHrefWithRedirect } from "@/lib/auth-redirect"
 import { formatNumber } from "@/lib/formatters"
 import { resolveSiteIconPath } from "@/lib/site-branding"
+import type { PublicUserRoleBadge } from "@/lib/user-presentation"
 import { cn } from "@/lib/utils"
 import { getVipLevel, getVipNameClass, isVipActive } from "@/lib/vip-status"
 
@@ -54,8 +55,10 @@ interface CheckInCalendarResponse {
 export interface SidebarUserCardData {
   username: string
   nickname?: string | null
+  displayName?: string | null
   avatarPath?: string | null
   role?: "USER" | "MODERATOR" | "ADMIN" | null
+  roleBadge?: PublicUserRoleBadge | null
   status?: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
   level?: number
   levelName?: string
@@ -125,10 +128,11 @@ function resolveCurrentMakeUpPrice(user: SidebarUserCardData) {
   return user.checkInVip1MakeUpCardPrice ?? user.checkInVipMakeUpCardPrice ?? 0
 }
 
-function getRoleBadgeConfig(role?: SidebarUserCardData["role"]) {
+function getDefaultRoleBadgeConfig(role?: SidebarUserCardData["role"]) {
   if (role === "ADMIN") {
     return {
       label: "管理员",
+      title: "管理员",
       className: "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-200",
     }
   }
@@ -136,11 +140,59 @@ function getRoleBadgeConfig(role?: SidebarUserCardData["role"]) {
   if (role === "MODERATOR") {
     return {
       label: "版主",
+      title: "版主",
       className: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200",
     }
   }
 
   return null
+}
+
+function getRoleBadgeToneClassName(roleBadge: PublicUserRoleBadge) {
+  if (roleBadge.key === "admin" || roleBadge.tone === "danger") {
+    return "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-200"
+  }
+
+  if (roleBadge.key === "moderator" || roleBadge.tone === "sky") {
+    return "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200"
+  }
+
+  if (roleBadge.tone === "warning") {
+    return "bg-yellow-100 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-200"
+  }
+
+  if (roleBadge.tone === "vip") {
+    return "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200"
+  }
+
+  if (roleBadge.tone === "level") {
+    return "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200"
+  }
+
+  if (roleBadge.tone === "orange") {
+    return "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-200"
+  }
+
+  return "bg-secondary text-muted-foreground dark:bg-white/6 dark:text-slate-300"
+}
+
+function getRoleBadgeConfig(
+  roleBadge: SidebarUserCardData["roleBadge"] | undefined,
+  role?: SidebarUserCardData["role"],
+) {
+  if (roleBadge === null) {
+    return null
+  }
+
+  if (roleBadge === undefined) {
+    return getDefaultRoleBadgeConfig(role)
+  }
+
+  return {
+    label: roleBadge.label,
+    title: roleBadge.tooltip?.trim() || roleBadge.label,
+    className: getRoleBadgeToneClassName(roleBadge),
+  }
 }
 
 function addMonths(date: Date, delta: number) {
@@ -345,6 +397,7 @@ export function SidebarUserCard({ user, createPostHref = "/write", siteName = "�
   }
 
   const safeUser = currentUser
+  const displayName = safeUser.displayName ?? safeUser.nickname ?? safeUser.username
   const pointName = safeUser.pointName ?? "积分"
   const vipActive = isVipActive(safeUser)
 
@@ -366,7 +419,7 @@ export function SidebarUserCard({ user, createPostHref = "/write", siteName = "�
     })
   }
 
-  const roleBadge = getRoleBadgeConfig(safeUser.role)
+  const roleBadge = getRoleBadgeConfig(safeUser.roleBadge, safeUser.role)
   const isRestrictedUser = safeUser.status === "BANNED" || safeUser.status === "MUTED"
   const effectiveMakeUpPrice = resolveCurrentMakeUpPrice(safeUser)
   const normalMakeUpPrice = calendarData?.normalMakeUpPrice ?? (safeUser.checkInMakeUpCardPrice ?? 0)
@@ -534,12 +587,12 @@ export function SidebarUserCard({ user, createPostHref = "/write", siteName = "�
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 items-start gap-3">
               <Link href={`/users/${currentUser.username}`} className={cn("shrink-0", isRestrictedUser && "grayscale")}>
-                <UserAvatar name={currentUser.nickname ?? currentUser.username} avatarPath={currentUser.avatarPath} size="md" isVip={vipActive} vipLevel={currentUser.vipLevel} />
+                <UserAvatar name={displayName} avatarPath={currentUser.avatarPath} size="md" isVip={vipActive} vipLevel={currentUser.vipLevel} />
               </Link>
               <div className={cn("min-w-0 flex-1", isRestrictedUser && "grayscale")}>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Link href={`/users/${currentUser.username}`} className={cn("truncate text-sm font-semibold", getVipNameClass(vipActive, currentUser.vipLevel, { interactive: true }))}>
-                    {currentUser.nickname ?? currentUser.username}
+                    {displayName}
                   </Link>
                   {vipActive ? <VipBadge level={getVipLevel(currentUser)} compact /> : null}
                   {isRestrictedUser ? <UserStatusBadge status={currentUser.status} compact /> : null}
@@ -549,7 +602,10 @@ export function SidebarUserCard({ user, createPostHref = "/write", siteName = "�
                     <LevelBadge level={currentUser.level} name={currentUser.levelName} color={currentUser.levelColor} icon={currentUser.levelIcon} compact />
                   ) : null}
                   {roleBadge ? (
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${roleBadge.className}`}>
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${roleBadge.className}`}
+                      title={roleBadge.title}
+                    >
                       {roleBadge.label}
                     </span>
                   ) : null}

@@ -12,11 +12,15 @@ import { resolvePostListDisplayMode, type PostListDisplayMode } from "@/lib/post
 import { dedupeAndMapPinnedPosts, extractPinnedPostIds } from "@/lib/pinned-posts"
 import type { TaxonomyPostSort } from "@/lib/forum-taxonomy-sort"
 import { mapListPost } from "@/lib/post-map"
-import { applyHookedUserPresentationToSitePosts } from "@/lib/user-presentation-server"
+import {
+  applyHookedUserPresentationToNamedItem,
+  applyHookedUserPresentationToSitePosts,
+} from "@/lib/user-presentation-server"
 import { findActiveBoardsWithZoneAndPostCount, findBoardBySlugWithZoneAndPostCount, findBoardModeratorsByBoardId } from "@/db/board-read-queries"
 import type { SitePostItem } from "@/lib/posts"
 import { TAXONOMY_CACHE_TAGS, TAXONOMY_CONTENT_CACHE_TAG } from "@/lib/taxonomy-cache"
 import { getUserDisplayName } from "@/lib/user-display"
+import type { PublicUserRoleBadge } from "@/lib/user-presentation"
 
 
 
@@ -134,18 +138,33 @@ export interface BoardModeratorItem {
   avatarPath: string | null
   vipLevel: number
   role: "USER" | "MODERATOR" | "ADMIN"
+  roleBadge?: PublicUserRoleBadge | null
 }
 
 const getCachedBoardModerators = cache(async (boardId: string): Promise<BoardModeratorItem[]> => {
   const scopes = await findBoardModeratorsByBoardId(boardId)
 
-  return scopes.map((scope) => ({
-    id: scope.moderator.id,
-    username: scope.moderator.username,
-    displayName: getUserDisplayName(scope.moderator),
-    avatarPath: scope.moderator.avatarPath ?? null,
-    vipLevel: scope.moderator.vipLevel ?? 0,
-    role: scope.moderator.role,
+  return Promise.all(scopes.map(async (scope) => {
+    const moderator = scope.moderator
+    const presentedModerator = await applyHookedUserPresentationToNamedItem({
+      id: moderator.id,
+      username: moderator.username,
+      displayName: getUserDisplayName(moderator),
+      avatarPath: moderator.avatarPath,
+      role: moderator.role,
+      status: moderator.status,
+      vipLevel: moderator.vipLevel,
+    })
+
+    return {
+      id: moderator.id,
+      username: moderator.username,
+      displayName: presentedModerator.displayName,
+      avatarPath: presentedModerator.avatarPath,
+      vipLevel: moderator.vipLevel ?? 0,
+      role: moderator.role,
+      roleBadge: presentedModerator.roleBadge,
+    }
   }))
 })
 

@@ -15,6 +15,7 @@ import { UserStatusBadge } from "@/components/user/user-status-badge"
 import { UserVerificationBadge } from "@/components/user/user-verification-badge"
 import { VipLevelIcon } from "@/components/vip/vip-level-icon"
 import { formatNumber } from "@/lib/formatters"
+import { getPublicUidLabel } from "@/lib/user-presentation"
 import { cn } from "@/lib/utils"
 import type { UserPreviewCardData } from "@/lib/user-preview-card"
 
@@ -250,19 +251,66 @@ function PreviewIdentityIcon({
   )
 }
 
+function getPreviewRoleBadgeConfig(
+  roleBadge: NonNullable<UserPreviewCardData["user"]>["roleBadge"] | undefined,
+  fallbackRole: NonNullable<UserPreviewCardData["user"]>["role"],
+) {
+  if (roleBadge === null) {
+    return null
+  }
+
+  if (
+    roleBadge?.key === "admin"
+    || roleBadge?.tone === "danger"
+    || (roleBadge === undefined && fallbackRole === "ADMIN")
+  ) {
+    return {
+      label: roleBadge?.tooltip?.trim() || roleBadge?.label || "站长",
+      className: "text-red-600 dark:text-red-300",
+      icon: <Crown className="h-3.5 w-3.5" />,
+    }
+  }
+
+  if (
+    roleBadge?.key === "moderator"
+    || roleBadge?.tone === "sky"
+    || (roleBadge === undefined && fallbackRole === "MODERATOR")
+  ) {
+    return {
+      label: roleBadge?.tooltip?.trim() || roleBadge?.label || "版主",
+      className: "text-sky-600 dark:text-sky-300",
+      icon: <ShieldCheck className="h-3.5 w-3.5" />,
+    }
+  }
+
+  if (roleBadge) {
+    return {
+      label: roleBadge.tooltip?.trim() || roleBadge.label,
+      className: "text-muted-foreground",
+      icon: <ShieldCheck className="h-3.5 w-3.5" />,
+    }
+  }
+
+  return null
+}
+
 function PreviewDisplayName({
   href,
   name,
   role,
+  roleBadge,
   vipActive,
   vipLevel,
 }: {
   href: string
   name: string
   role: NonNullable<UserPreviewCardData["user"]>["role"]
+  roleBadge: NonNullable<UserPreviewCardData["user"]>["roleBadge"] | undefined
   vipActive: boolean
   vipLevel: number | null
 }) {
+  const resolvedRoleBadge = getPreviewRoleBadgeConfig(roleBadge, role)
+
   return (
     <div className="flex min-w-0 items-center gap-1.5">
       <Link href={href} className="block min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground hover:underline" title={name}>
@@ -278,14 +326,9 @@ function PreviewDisplayName({
             />
           </PreviewIdentityIcon>
         ) : null}
-        {role === "ADMIN" ? (
-          <PreviewIdentityIcon label="站长" className="text-red-600 dark:text-red-300">
-            <Crown className="h-3.5 w-3.5" />
-          </PreviewIdentityIcon>
-        ) : null}
-        {role === "MODERATOR" ? (
-          <PreviewIdentityIcon label="版主" className="text-sky-600 dark:text-sky-300">
-            <ShieldCheck className="h-3.5 w-3.5" />
+        {resolvedRoleBadge ? (
+          <PreviewIdentityIcon label={resolvedRoleBadge.label} className={resolvedRoleBadge.className}>
+            {resolvedRoleBadge.icon}
           </PreviewIdentityIcon>
         ) : null}
       </div>
@@ -340,6 +383,7 @@ function UserProfilePreviewCardContent({ data }: { data: UserPreviewCardData }) 
               href={data.profileHref ?? `/users/${user.username}`}
               name={user.displayName}
               role={user.role}
+              roleBadge={user.roleBadge}
               vipActive={user.vipActive}
               vipLevel={user.vipLevel}
             />
@@ -403,6 +447,7 @@ function UserProfilePreviewCardContent({ data }: { data: UserPreviewCardData }) 
                 href={data.profileHref ?? `/users/${user.username}`}
                 name={user.displayName}
                 role={user.role}
+                roleBadge={user.roleBadge}
                 vipActive={user.vipActive}
                 vipLevel={user.vipLevel}
               />
@@ -442,7 +487,7 @@ function UserProfilePreviewCardContent({ data }: { data: UserPreviewCardData }) 
               <div className="mt-1.5 flex flex-nowrap items-center gap-1.5 overflow-hidden whitespace-nowrap text-[11px] text-muted-foreground">
                 <span>Lv.{user.level}</span>
                 {user.levelName ? <span>{user.levelName}</span> : null}
-                <span>#{formatNumber(user.id)}</span>
+                <span>#{getPublicUidLabel(user)}</span>
                 <span>{user.joinedDateText}</span>
               </div>
             </div>

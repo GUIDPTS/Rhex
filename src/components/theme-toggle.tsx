@@ -15,9 +15,8 @@ import {
   type ThemePreference,
   type ThemePreset,
   getThemePresetDisplayMeta,
+  readThemeLocalSettingsSnapshot,
   readStoredCustomThemeConfig,
-  resolveStoredFontSizePreset,
-  resolveStoredThemePreset,
   setStoredFontSizePreset,
   setStoredThemePreset,
 } from "@/lib/theme"
@@ -47,14 +46,14 @@ export function ThemeToggle() {
       return themeSettings.preset
     }
 
-    return resolveStoredThemePreset(window.localStorage.getItem(THEME_PRESET_STORAGE_KEY), themeSettings.preset)
+    return readThemeLocalSettingsSnapshot(themeSettings).preset
   })
   const [fontSizePreset, setFontSizePreset] = useState<FontSizePreset>(() => {
     if (typeof window === "undefined") {
       return themeSettings.fontSizePreset
     }
 
-    return resolveStoredFontSizePreset(window.localStorage.getItem(FONT_SIZE_PRESET_STORAGE_KEY) ?? themeSettings.fontSizePreset)
+    return readThemeLocalSettingsSnapshot(themeSettings).fontSizePreset
   })
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -98,8 +97,9 @@ export function ThemeToggle() {
     }
 
     const syncThemeState = () => {
-      setThemePreset(resolveStoredThemePreset(window.localStorage.getItem(THEME_PRESET_STORAGE_KEY), themeSettings.preset))
-      setFontSizePreset(resolveStoredFontSizePreset(window.localStorage.getItem(FONT_SIZE_PRESET_STORAGE_KEY) ?? themeSettings.fontSizePreset))
+      const snapshot = readThemeLocalSettingsSnapshot(themeSettings)
+      setThemePreset(snapshot.preset)
+      setFontSizePreset(snapshot.fontSizePreset)
     }
 
     const handleStorage = (event: StorageEvent) => {
@@ -115,7 +115,7 @@ export function ThemeToggle() {
       window.removeEventListener(THEME_SETTINGS_CHANGE_EVENT, syncThemeState)
       window.removeEventListener("storage", handleStorage)
     }
-  }, [themeSettings.fontSizePreset, themeSettings.preset])
+  }, [themeSettings])
 
   function handleThemeSelect(preference: ThemePreference) {
     setTheme(preference)

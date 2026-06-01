@@ -400,9 +400,13 @@ export const ADDON_ACTION_HOOK_NAMES = [
   "upload.file.before",
   "upload.file.after",
   // addon 生命周期
+  "addon.installed.before",
   "addon.installed.after",
+  "addon.uninstalled.before",
   "addon.uninstalled.after",
+  "addon.enabled.before",
   "addon.enabled.after",
+  "addon.disabled.before",
   "addon.disabled.after",
   "addon.api.request.before",
   "addon.api.request.after",
@@ -423,6 +427,12 @@ export const ADDON_WATERFALL_HOOK_NAMES = [
   "user.profile.introduction.value",
   "user.displayName.value",
   "user.avatar.url.value",
+  "user.publicUid.value",
+  "user.levelBadge.value",
+  "user.verificationBadge.value",
+  "user.displayedBadges.items",
+  "user.roleBadge.value",
+  "user.identityTags.items",
   "search.query.normalize",
   "seo.meta.title",
   "seo.meta.description",
@@ -476,6 +486,7 @@ export interface AddonManifest {
     adminApis?: string[]
     backgroundJobs?: string[]
     providers?: string[]
+    hooks?: string[]
   }
   dependencies?: {
     addons?: string[]
@@ -751,6 +762,68 @@ export interface AddonUserSummary {
   avatarPath: string | null
   status: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
   vipLevel: number
+}
+
+export interface AddonPublicUserLevelBadge {
+  level: number
+  name: string
+  color: string
+  icon: string
+}
+
+export interface AddonPublicUserVerificationBadge {
+  id: string
+  name: string
+  color: string
+  iconText?: string | null
+  customIconText?: string | null
+  description?: string | null
+  customDescription?: string | null
+}
+
+export interface AddonPublicUserDisplayedBadge {
+  id: string
+  code?: string | null
+  name: string
+  description?: string | null
+  color: string
+  iconText?: string | null
+  displayOrder?: number | null
+}
+
+export type AddonPublicUserIdentityTagTone =
+  | "plain"
+  | "vip"
+  | "level"
+  | "orange"
+  | "sky"
+  | "danger"
+  | "warning"
+
+export interface AddonPublicUserIdentityTag {
+  key: string
+  label: string
+  tone?: AddonPublicUserIdentityTagTone
+  tooltip?: string | null
+  order?: number | null
+}
+
+export interface AddonPublicUserRoleBadge {
+  key: string
+  label: string
+  shortLabel?: string | null
+  tone?: AddonPublicUserIdentityTagTone
+  tooltip?: string | null
+}
+
+export interface AddonPublicUserPresentationPayload {
+  userId?: number
+  username?: string
+  role?: string
+  status?: string
+  level?: number
+  vipLevel?: number | null
+  badges?: string[]
 }
 
 export type AddonUserProfileVisibility = "PUBLIC" | "MEMBERS" | "PRIVATE"
@@ -1721,7 +1794,21 @@ export interface AddonActionHookPayloadMap {
     url?: string
   }
   // ─── addon 生命周期 ───
+  "addon.installed.before": {
+    addonId: string
+    version: string
+    installAction: "install" | "upgrade" | "overwrite"
+    existingVersion?: string | null
+    hasExisting: boolean
+    replaceExisting: boolean
+    enableAfterInstall: boolean
+    originalName?: string | null
+  }
   "addon.installed.after": {
+    addonId: string
+    version: string
+  }
+  "addon.uninstalled.before": {
     addonId: string
     version: string
   }
@@ -1729,7 +1816,15 @@ export interface AddonActionHookPayloadMap {
     addonId: string
     version: string
   }
+  "addon.enabled.before": {
+    addonId: string
+    version: string
+  }
   "addon.enabled.after": {
+    addonId: string
+    version: string
+  }
+  "addon.disabled.before": {
     addonId: string
     version: string
   }
@@ -1776,6 +1871,12 @@ export interface AddonWaterfallHookValueMap {
   "user.profile.introduction.value": string
   "user.displayName.value": string
   "user.avatar.url.value": string
+  "user.publicUid.value": string
+  "user.levelBadge.value": AddonPublicUserLevelBadge | null
+  "user.verificationBadge.value": AddonPublicUserVerificationBadge | null
+  "user.displayedBadges.items": AddonPublicUserDisplayedBadge[]
+  "user.roleBadge.value": AddonPublicUserRoleBadge | null
+  "user.identityTags.items": AddonPublicUserIdentityTag[]
   "search.query.normalize": string
   "seo.meta.title": string
   "seo.meta.description": string
@@ -1847,6 +1948,16 @@ export interface AddonWaterfallHookPayloadMap {
     nextActivityVisibility: AddonUserProfileVisibility
     nextIntroductionVisibility: AddonUserProfileVisibility
   }
+  "user.displayName.value": AddonPublicUserPresentationPayload
+  "user.avatar.url.value": AddonPublicUserPresentationPayload
+  "user.publicUid.value": AddonPublicUserPresentationPayload & {
+    userId: number
+  }
+  "user.levelBadge.value": AddonPublicUserPresentationPayload
+  "user.verificationBadge.value": AddonPublicUserPresentationPayload
+  "user.displayedBadges.items": AddonPublicUserPresentationPayload
+  "user.roleBadge.value": AddonPublicUserPresentationPayload
+  "user.identityTags.items": AddonPublicUserPresentationPayload
   "breadcrumb.items": {
     scope: "admin"
     currentKey: string
@@ -2061,7 +2172,7 @@ export interface AddonWaterfallHookRegistration<
   description?: string
   transform: (
     context: AddonWaterfallHookContext<THook, TValue, TPayload>,
-  ) => TValue | undefined
+  ) => AddonMaybePromise<TValue | undefined>
 }
 
 export interface AddonAsyncWaterfallHookRegistration<

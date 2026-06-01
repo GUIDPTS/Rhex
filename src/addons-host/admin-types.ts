@@ -73,12 +73,25 @@ export interface AddonInstallPermissionItem {
   risk: "normal" | "sensitive"
 }
 
+export interface AddonInstallProvidesPreview {
+  slots: string[]
+  surfaces: string[]
+  pages: string[]
+  adminPages: string[]
+  publicApis: string[]
+  adminApis: string[]
+  backgroundJobs: string[]
+  providers: string[]
+  hooks: string[]
+}
+
 export interface AddonInstallPreviewData {
   addonId: string
   name: string
   version: string
   description: string | null
   permissions: AddonInstallPermissionItem[]
+  provides: AddonInstallProvidesPreview
   installAction: "install" | "upgrade" | "overwrite"
   existingVersion: string | null
   hasExisting: boolean

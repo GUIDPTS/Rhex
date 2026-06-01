@@ -8,7 +8,7 @@ import { getPublicPostContentText } from "@/lib/post-content"
 import { resolvePostCoverImage } from "@/lib/post-cover"
 import { parsePostRewardPoolConfigFromContent } from "@/lib/post-red-packets"
 import { getPostStatusLabel, getPostTypeLabel, type LocalPostType } from "@/lib/post-types"
-import { getUserDisplayName, type PublicUserStatus } from "@/lib/users"
+import { getUserDisplayName, type PublicUserRole, type PublicUserStatus } from "@/lib/users"
 import { getUserAvatarPath } from "@/lib/user-display"
 import { getVipLevel, isVipActive, type VipStateSource } from "@/lib/vip-status"
 
@@ -19,7 +19,9 @@ interface ListPostAuthor extends VipStateSource {
   username: string
   nickname?: string | null
   avatarPath?: string | null
+  role?: PublicUserRole | null
   status: PublicUserStatus
+  level?: number | null
   userBadges?: Array<{
     id: string
     isDisplayed?: boolean
@@ -137,7 +139,9 @@ export function mapListPost(post: ListPostSource, anonymousMaskIdentity: Anonymo
 
     authorUsername: post.author.username,
     authorAvatarPath: getUserAvatarPath(post.author),
+    authorRole: post.author.role ?? undefined,
     authorStatus: post.author.status,
+    authorLevel: post.author.level ?? undefined,
     authorIsVip: isVipActive(post.author),
 
     authorVipLevel: getVipLevel(post.author),
@@ -163,6 +167,7 @@ export function mapListPost(post: ListPostSource, anonymousMaskIdentity: Anonymo
         description: item.badge.description,
         color: item.badge.color,
         iconText: item.badge.iconText,
+        displayOrder: item.displayOrder ?? null,
       })),
     publishedAt: formatRelativeTime(post.publishedAt ?? post.createdAt),
     publishedAtRaw: (post.publishedAt ?? post.createdAt).toISOString(),

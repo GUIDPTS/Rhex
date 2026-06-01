@@ -11,6 +11,7 @@ import type { SiteBoardItem, BoardModeratorItem } from "@/lib/boards"
 import type { SidebarUserCardData } from "@/components/user/sidebar-user-card"
 import type { HomeSidebarPanelItem } from "@/lib/home-sidebar-layout"
 import type { BoardSidebarLinkItem } from "@/lib/board-sidebar-config"
+import { getPublicUserRoleBadgeLabel } from "@/lib/user-presentation"
 
 interface HotTopicItem {
   id: string
@@ -102,15 +103,19 @@ function BoardModeratorsMenu({ moderators }: { moderators: BoardModeratorItem[] 
           <p className="text-[11px] text-muted-foreground">{moderators.length} 人</p>
         </div>
         <div className="space-y-1.5">
-          {moderators.map((moderator) => (
-            <Link key={moderator.id} href={`/users/${moderator.username}`} className="flex items-center gap-3 rounded-[16px] px-2 py-2 transition-colors hover:bg-accent/50">
-              <UserAvatar name={moderator.displayName} avatarPath={moderator.avatarPath} size="xs" isVip={moderator.vipLevel > 0} vipLevel={moderator.vipLevel} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{moderator.displayName}</p>
-                <p className="truncate text-xs text-muted-foreground">@{moderator.username}{moderator.role === "ADMIN" ? " · 管理员" : ""}</p>
-              </div>
-            </Link>
-          ))}
+          {moderators.map((moderator) => {
+            const roleLabel = getPublicUserRoleBadgeLabel(moderator)
+
+            return (
+              <Link key={moderator.id} href={`/users/${moderator.username}`} className="flex items-center gap-3 rounded-[16px] px-2 py-2 transition-colors hover:bg-accent/50">
+                <UserAvatar name={moderator.displayName} avatarPath={moderator.avatarPath} size="xs" isVip={moderator.vipLevel > 0} vipLevel={moderator.vipLevel} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{moderator.displayName}</p>
+                  <p className="truncate text-xs text-muted-foreground">@{moderator.username}{roleLabel ? ` · ${roleLabel}` : ""}</p>
+                </div>
+              </Link>
+            )
+          })}
         </div>
       </div>
     </details>

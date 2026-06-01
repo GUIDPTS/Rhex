@@ -42,11 +42,26 @@ export function CommentIdentityBadge({ label, tooltip, tone = "neutral" }: { lab
   )
 }
 
-export function CommentAuthorIdentityBadges({ isPostAuthor, authorRole }: { isPostAuthor: boolean; authorRole: "USER" | "MODERATOR" | "ADMIN" }) {
-  const adminBadge = authorRole === "ADMIN"
-    ? { label: "Admin", tooltip: "管理员" }
-    : authorRole === "MODERATOR"
-      ? { label: "Mod", tooltip: "版主" }
+export function CommentAuthorIdentityBadges({
+  isPostAuthor,
+  authorRole,
+  roleBadge,
+}: {
+  isPostAuthor: boolean
+  authorRole: "USER" | "MODERATOR" | "ADMIN"
+  roleBadge?: SiteCommentItem["authorRoleBadge"] | SiteCommentReplyItem["authorRoleBadge"]
+}) {
+  const adminBadge = roleBadge === undefined
+    ? authorRole === "ADMIN"
+      ? { label: "Admin", tooltip: "管理员" }
+      : authorRole === "MODERATOR"
+        ? { label: "Mod", tooltip: "版主" }
+        : null
+    : roleBadge
+      ? {
+          label: roleBadge.shortLabel?.trim() || roleBadge.label,
+          tooltip: roleBadge.tooltip?.trim() || roleBadge.label,
+        }
       : null
   if (!isPostAuthor && !adminBadge) return null
 

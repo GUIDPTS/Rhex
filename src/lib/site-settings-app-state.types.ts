@@ -11,6 +11,7 @@ import type { VipTierPricing } from "@/lib/vip-tier-pricing"
 import type { PasswordPolicySettings, PasswordStrength } from "@/lib/password-policy"
 import type { CaptchaMode } from "@/lib/shared/config-parsers"
 import type { EmailBusinessSwitchSettings } from "@/lib/email-business-switches"
+import type { WatermarkFontAsset } from "@/lib/watermark-lib"
 
 export type { PasswordStrength }
 export type { EmailBusinessSwitchSettings } from "@/lib/email-business-switches"
@@ -144,7 +145,23 @@ export interface UploadObjectStorageSettings {
 
 export interface ImageWatermarkSettings {
   enabled: boolean
+  fontAssets: WatermarkFontAsset[]
+  textEnabled: boolean
   text: string
+  textPosition: ImageWatermarkPosition
+  textTiled: boolean
+  textOpacity: number
+  textFontSize: number
+  textFontFamily: string
+  textMargin: number
+  textColor: string
+  logoEnabled: boolean
+  logoPath: string
+  logoPosition: ImageWatermarkPosition
+  logoTiled: boolean
+  logoOpacity: number
+  logoMargin: number
+  logoScalePercent: number
   position: ImageWatermarkPosition
   tiled: boolean
   opacity: number
@@ -152,8 +169,6 @@ export interface ImageWatermarkSettings {
   fontFamily: string
   margin: number
   color: string
-  logoPath: string
-  logoScalePercent: number
 }
 
 export interface AttachmentFeatureSettings {

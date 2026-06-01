@@ -185,6 +185,25 @@ function getInstallActionLabel(action: AddonInstallPreviewData["installAction"])
   }
 }
 
+const providePreviewSections: Array<{
+  key: keyof AddonInstallPreviewData["provides"]
+  label: string
+}> = [
+  { key: "slots", label: "Slots" },
+  { key: "surfaces", label: "Surfaces" },
+  { key: "pages", label: "公开页" },
+  { key: "adminPages", label: "后台页" },
+  { key: "publicApis", label: "公开 API" },
+  { key: "adminApis", label: "后台 API" },
+  { key: "backgroundJobs", label: "后台任务" },
+  { key: "providers", label: "Providers" },
+  { key: "hooks", label: "Hooks" },
+]
+
+function getProvidePreviewCount(provides: AddonInstallPreviewData["provides"]) {
+  return providePreviewSections.reduce((total, section) => total + provides[section.key].length, 0)
+}
+
 export function AddonsHostAdminPage({ initialData }: AddonsHostAdminPageProps) {
   const [data, setData] = useState(initialData)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -561,6 +580,44 @@ export function AddonsHostAdminPage({ initialData }: AddonsHostAdminPageProps) {
               items={installPreview.relationWarnings}
               tone="warning"
             />
+
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium">声明扩展点</p>
+                <Badge variant="outline">
+                  {getProvidePreviewCount(installPreview.provides) > 0
+                    ? `${getProvidePreviewCount(installPreview.provides)} 项`
+                    : "未声明"}
+                </Badge>
+              </div>
+
+              {getProvidePreviewCount(installPreview.provides) > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {providePreviewSections.map((section) => {
+                    const items = installPreview.provides[section.key]
+
+                    return items.length > 0 ? (
+                      <div key={section.key} className="rounded-lg border border-border bg-muted/20 px-4 py-3">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {section.label}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {items.map((item) => (
+                            <Badge key={`${section.key}:${item}`} variant="outline">
+                              {item}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
+                  该插件未在 `addon.json` 中声明 provides 元数据；实际注册仍以服务端入口的 `setup(api)` 为准。
+                </div>
+              )}
+            </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between gap-3">

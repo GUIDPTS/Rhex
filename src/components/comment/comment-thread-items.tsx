@@ -241,6 +241,7 @@ function CommentAuthorMetaContent({
           <CommentAuthorIdentityBadges
             isPostAuthor={entry.isPostAuthor}
             authorRole={entry.authorRole}
+            roleBadge={entry.authorRoleBadge}
           />
           <AddonSurfaceClientRenderer
             surface="comment.author.badges"

@@ -6,7 +6,7 @@ import { normalizeNonNegativeInteger, normalizePositiveInteger } from "@/lib/sha
 import { mergeUploadStorageSensitiveConfig, resolveUploadStorageSensitiveConfig } from "@/lib/site-settings-sensitive-state"
 import { normalizeUploadLocalPath } from "@/lib/upload-path"
 import { normalizeUploadProvider } from "@/lib/upload-provider"
-import { WATERMARK_TEXT_MAX_LENGTH } from "@/lib/watermark-lib"
+import { normalizeWatermarkFontAssets, resolveKnownWatermarkFontFamily, WATERMARK_TEXT_MAX_LENGTH } from "@/lib/watermark-lib"
 
 export async function updateUploadSiteSettingsSection(existing: SiteSettingsRecord, body: JsonObject, section: string) {
   if (section !== "upload") {
@@ -67,23 +67,48 @@ export async function updateUploadSiteSettingsSection(existing: SiteSettingsReco
   const imageWatermarkEnabled = body.imageWatermarkEnabled === undefined
     ? existingImageWatermarkSettings.enabled
     : Boolean(body.imageWatermarkEnabled)
+  const imageWatermarkTextEnabled = body.imageWatermarkTextEnabled === undefined
+    ? existingImageWatermarkSettings.textEnabled
+    : Boolean(body.imageWatermarkTextEnabled)
   const imageWatermarkText = body.imageWatermarkText === undefined
     ? existingImageWatermarkSettings.text
     : readOptionalStringField(body, "imageWatermarkText")
-  const imageWatermarkPosition = (readOptionalStringField(body, "imageWatermarkPosition") || existingImageWatermarkSettings.position) as ImageWatermarkPosition
-  const imageWatermarkTiled = body.imageWatermarkTiled === undefined
-    ? existingImageWatermarkSettings.tiled
-    : Boolean(body.imageWatermarkTiled)
-  const imageWatermarkOpacity = normalizeNonNegativeInteger(body.imageWatermarkOpacity, existingImageWatermarkSettings.opacity)
-  const imageWatermarkFontSize = normalizePositiveInteger(body.imageWatermarkFontSize, existingImageWatermarkSettings.fontSize)
-  const imageWatermarkFontFamily = body.imageWatermarkFontFamily === undefined
-    ? existingImageWatermarkSettings.fontFamily
-    : readOptionalStringField(body, "imageWatermarkFontFamily")
-  const imageWatermarkMargin = normalizeNonNegativeInteger(body.imageWatermarkMargin, existingImageWatermarkSettings.margin)
-  const imageWatermarkColor = readOptionalStringField(body, "imageWatermarkColor") || existingImageWatermarkSettings.color
+  const imageWatermarkTextPosition = (readOptionalStringField(body, "imageWatermarkTextPosition") || readOptionalStringField(body, "imageWatermarkPosition") || existingImageWatermarkSettings.textPosition) as ImageWatermarkPosition
+  const imageWatermarkTextTiled = body.imageWatermarkTextTiled === undefined
+    ? body.imageWatermarkTiled === undefined
+      ? existingImageWatermarkSettings.textTiled
+      : Boolean(body.imageWatermarkTiled)
+    : Boolean(body.imageWatermarkTextTiled)
+  const imageWatermarkTextOpacity = normalizeNonNegativeInteger(body.imageWatermarkTextOpacity ?? body.imageWatermarkOpacity, existingImageWatermarkSettings.textOpacity)
+  const imageWatermarkTextFontSize = normalizePositiveInteger(body.imageWatermarkTextFontSize ?? body.imageWatermarkFontSize, existingImageWatermarkSettings.textFontSize)
+  const submittedImageWatermarkFontAssets = body.imageWatermarkFontAssets === undefined
+    ? existingImageWatermarkSettings.fontAssets
+    : normalizeWatermarkFontAssets(body.imageWatermarkFontAssets)
+  const existingImageWatermarkFontAssetIds = new Set(existingImageWatermarkSettings.fontAssets.map((asset) => asset.id))
+  const imageWatermarkFontAssets = [
+    ...existingImageWatermarkSettings.fontAssets,
+    ...submittedImageWatermarkFontAssets.filter((asset) => existingImageWatermarkFontAssetIds.has(asset.id)),
+  ].filter((asset, index, assets) => assets.findIndex((item) => item.id === asset.id) === index)
+  const imageWatermarkTextFontFamily = body.imageWatermarkTextFontFamily === undefined
+    ? body.imageWatermarkFontFamily === undefined
+      ? existingImageWatermarkSettings.textFontFamily
+      : readOptionalStringField(body, "imageWatermarkFontFamily")
+    : readOptionalStringField(body, "imageWatermarkTextFontFamily")
+  const resolvedImageWatermarkTextFontFamily = resolveKnownWatermarkFontFamily(imageWatermarkTextFontFamily, imageWatermarkFontAssets)
+  const imageWatermarkTextMargin = normalizeNonNegativeInteger(body.imageWatermarkTextMargin ?? body.imageWatermarkMargin, existingImageWatermarkSettings.textMargin)
+  const imageWatermarkTextColor = readOptionalStringField(body, "imageWatermarkTextColor") || readOptionalStringField(body, "imageWatermarkColor") || existingImageWatermarkSettings.textColor
+  const imageWatermarkLogoEnabled = body.imageWatermarkLogoEnabled === undefined
+    ? existingImageWatermarkSettings.logoEnabled
+    : Boolean(body.imageWatermarkLogoEnabled)
   const imageWatermarkLogoPath = body.imageWatermarkLogoPath === undefined
     ? existingImageWatermarkSettings.logoPath
     : readOptionalStringField(body, "imageWatermarkLogoPath")
+  const imageWatermarkLogoPosition = (readOptionalStringField(body, "imageWatermarkLogoPosition") || existingImageWatermarkSettings.logoPosition) as ImageWatermarkPosition
+  const imageWatermarkLogoTiled = body.imageWatermarkLogoTiled === undefined
+    ? existingImageWatermarkSettings.logoTiled
+    : Boolean(body.imageWatermarkLogoTiled)
+  const imageWatermarkLogoOpacity = normalizeNonNegativeInteger(body.imageWatermarkLogoOpacity, existingImageWatermarkSettings.logoOpacity)
+  const imageWatermarkLogoMargin = normalizeNonNegativeInteger(body.imageWatermarkLogoMargin, existingImageWatermarkSettings.logoMargin)
   const imageWatermarkLogoScalePercent = normalizePositiveInteger(body.imageWatermarkLogoScalePercent, existingImageWatermarkSettings.logoScalePercent)
   const attachmentUploadEnabled = body.attachmentUploadEnabled === undefined
     ? existingAttachmentFeatureSettings.uploadEnabled
@@ -111,8 +136,16 @@ export async function updateUploadSiteSettingsSection(existing: SiteSettingsReco
     apiError(400, "请至少配置一种允许上传的附件格式")
   }
 
-  if (imageWatermarkEnabled && !imageWatermarkText.trim() && !imageWatermarkLogoPath.trim()) {
-    apiError(400, "启用图片水印时请填写水印文字或上传水印图片")
+  if (imageWatermarkEnabled && imageWatermarkTextEnabled && !imageWatermarkText.trim()) {
+    apiError(400, "启用文字水印时请填写水印文字")
+  }
+
+  if (imageWatermarkEnabled && imageWatermarkLogoEnabled && !imageWatermarkLogoPath.trim()) {
+    apiError(400, "启用图片水印时请上传或填写水印图片")
+  }
+
+  if (imageWatermarkEnabled && !imageWatermarkTextEnabled && !imageWatermarkLogoEnabled) {
+    apiError(400, "启用水印时请至少开启文字水印或图片水印")
   }
 
   if (imageWatermarkText.length > WATERMARK_TEXT_MAX_LENGTH) {
@@ -124,16 +157,30 @@ export async function updateUploadSiteSettingsSection(existing: SiteSettingsReco
   })
   const appStateWithImageWatermark = mergeImageWatermarkSettings(appStateWithMarkdownImageUpload, {
     enabled: imageWatermarkEnabled,
+    fontAssets: imageWatermarkFontAssets,
+    textEnabled: imageWatermarkTextEnabled,
     text: imageWatermarkText,
-    position: imageWatermarkPosition,
-    tiled: imageWatermarkTiled,
-    opacity: imageWatermarkOpacity,
-    fontSize: imageWatermarkFontSize,
-    fontFamily: imageWatermarkFontFamily,
-    margin: imageWatermarkMargin,
-    color: imageWatermarkColor,
+    textPosition: imageWatermarkTextPosition,
+    textTiled: imageWatermarkTextTiled,
+    textOpacity: imageWatermarkTextOpacity,
+    textFontSize: imageWatermarkTextFontSize,
+    textFontFamily: resolvedImageWatermarkTextFontFamily,
+    textMargin: imageWatermarkTextMargin,
+    textColor: imageWatermarkTextColor,
+    logoEnabled: imageWatermarkLogoEnabled,
     logoPath: imageWatermarkLogoPath,
+    logoPosition: imageWatermarkLogoPosition,
+    logoTiled: imageWatermarkLogoTiled,
+    logoOpacity: imageWatermarkLogoOpacity,
+    logoMargin: imageWatermarkLogoMargin,
     logoScalePercent: imageWatermarkLogoScalePercent,
+    position: imageWatermarkTextPosition,
+    tiled: imageWatermarkTextTiled,
+    opacity: imageWatermarkTextOpacity,
+    fontSize: imageWatermarkTextFontSize,
+    fontFamily: resolvedImageWatermarkTextFontFamily,
+    margin: imageWatermarkTextMargin,
+    color: imageWatermarkTextColor,
   })
   const appStateWithAttachmentFeature = mergeAttachmentFeatureSettings(appStateWithImageWatermark, {
     uploadEnabled: attachmentUploadEnabled,

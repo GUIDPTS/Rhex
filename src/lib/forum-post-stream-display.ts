@@ -29,6 +29,7 @@ export interface PostStreamDisplayItem {
   boardIcon?: string
   authorName: string
   authorUsername: string
+  authorPublicUid?: string | null
   authorAvatarPath?: string | null
   authorStatus?: SitePostItem["authorStatus"]
   authorIsVip?: boolean
@@ -127,6 +128,7 @@ export function mapSitePostsToDisplayItems(
       boardIcon: post.boardIcon,
       authorName: post.author,
       authorUsername: post.authorUsername ?? post.author,
+      authorPublicUid: post.authorPublicUid,
       authorAvatarPath: post.authorAvatarPath,
       authorStatus: post.authorStatus,
       authorIsVip: post.authorIsVip,

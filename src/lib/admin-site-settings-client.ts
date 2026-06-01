@@ -1,5 +1,6 @@
 import { adminPost, getAdminClientErrorMessage } from "@/lib/admin-client"
 import type { MarkdownEmojiItem } from "@/lib/markdown-emoji"
+import type { WatermarkFontAsset } from "@/lib/watermark-lib"
 
 export interface UploadMarkdownEmojiFilesData {
   items: MarkdownEmojiItem[]
@@ -9,12 +10,39 @@ export interface UploadAdminImageData {
   urlPath: string
 }
 
+export interface UploadAdminWatermarkFontData {
+  asset: WatermarkFontAsset
+}
+
 function isUploadAdminImageData(value: unknown): value is UploadAdminImageData {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false
   }
 
   return typeof (value as Record<string, unknown>).urlPath === "string"
+}
+
+function isWatermarkFontAsset(value: unknown): value is WatermarkFontAsset {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false
+  }
+
+  const row = value as Record<string, unknown>
+  return (
+    typeof row.id === "string" &&
+    typeof row.label === "string" &&
+    typeof row.fileName === "string" &&
+    typeof row.fontFamily === "string" &&
+    typeof row.urlPath === "string"
+  )
+}
+
+function isUploadAdminWatermarkFontData(value: unknown): value is UploadAdminWatermarkFontData {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false
+  }
+
+  return isWatermarkFontAsset((value as Record<string, unknown>).asset)
 }
 
 function isMarkdownEmojiItem(value: unknown): value is MarkdownEmojiItem {
@@ -106,6 +134,37 @@ export async function uploadAdminWatermarkLogoFile(file: File) {
       formData,
       {
         validateData: isUploadAdminImageData,
+        defaultSuccessMessage: "上传成功",
+        defaultErrorMessage: "上传失败",
+      },
+    )
+
+    return {
+      ok: true as const,
+      message: result.message,
+      data: result.data,
+    }
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: getAdminClientErrorMessage(error, "上传失败"),
+    }
+  }
+}
+
+export async function uploadAdminWatermarkFontFile(file: File, label?: string) {
+  try {
+    const formData = new FormData()
+    formData.append("file", file)
+    if (label?.trim()) {
+      formData.append("label", label.trim())
+    }
+
+    const result = await adminPost<UploadAdminWatermarkFontData>(
+      "/api/admin/site-settings/watermark-font-upload",
+      formData,
+      {
+        validateData: isUploadAdminWatermarkFontData,
         defaultSuccessMessage: "上传成功",
         defaultErrorMessage: "上传失败",
       },

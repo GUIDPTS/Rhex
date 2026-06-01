@@ -28,7 +28,7 @@ import { resolveSiteOrigin } from "@/lib/site-origin"
 import { getSidebarNavigationDisplayModeAttribute } from "@/lib/sidebar-navigation-preference"
 import { getPublishedCustomPageFooterHiddenPaths } from "@/lib/custom-pages"
 import { getSiteSettings } from "@/lib/site-settings"
-import { resolveThemeDocumentPropsFromCookieString } from "@/lib/theme"
+import { resolveThemeDefaultDeviceFromUserAgent, resolveThemeDocumentPropsFromCookieString } from "@/lib/theme"
 import { buildVipNameColorStyleVariables } from "@/lib/vip-name-colors"
 import { executeAddonSlot } from "@/addons-host/runtime/execute"
 import { AddonRenderBlock } from "@/addons-host/runtime/render"
@@ -115,7 +115,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const vipNameColorStyle = buildVipNameColorStyleVariables(settings.vipNameColors) as CSSProperties
   const sidebarDisplayMode = getSidebarNavigationDisplayModeAttribute(settings.leftSidebarDisplayMode)
   const themeRuntime = settings.theme
-  const themeDocument = resolveThemeDocumentPropsFromCookieString(cookieStore.toString(), themeRuntime)
+  const themeDefaultDevice = resolveThemeDefaultDeviceFromUserAgent(headerStore.get("user-agent"))
+  const themeDocument = resolveThemeDocumentPropsFromCookieString(cookieStore.toString(), themeRuntime, {
+    device: themeDefaultDevice,
+  })
   const rhexSession = {
     isAuthenticated: false,
     user: null,
@@ -166,7 +169,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             result={block.result}
           />
         ))}
-        <ThemeProvider settings={themeRuntime}>
+        <ThemeProvider defaultDevice={themeDefaultDevice} settings={themeRuntime}>
           <CurrentUserProvider>
             <CurrentUserInboxProvider messageEnabled={settings.messageEnabled} messagePromptAudioPath={settings.messagePromptAudioPath}>
             <SiteSettingsProvider

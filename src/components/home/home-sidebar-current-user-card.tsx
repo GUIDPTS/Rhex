@@ -70,10 +70,12 @@ export function HomeSidebarCurrentUserCard({ createPostHref, settings }: HomeSid
     ? {
         username: user.username,
         nickname: user.nickname,
+        displayName: user.displayName,
         avatarPath: user.avatarPath,
         role: user.role === "ADMIN" || user.role === "MODERATOR" ? user.role : "USER",
+        roleBadge: user.roleBadge,
         status: user.status === "ACTIVE" || user.status === "MUTED" || user.status === "BANNED" || user.status === "INACTIVE" ? user.status : "ACTIVE",
-        level: Math.max(1, user.level ?? 1),
+        level: Math.max(1, user.levelBadgeLevel ?? user.level ?? 1),
         levelName: user.levelName ?? undefined,
         levelColor: user.levelColor ?? undefined,
         levelIcon: user.levelIcon ?? undefined,

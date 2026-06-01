@@ -3,21 +3,37 @@ import path from "path"
 
 import { createCanvas, GlobalFonts, loadImage, type AvifConfig, type Image, type SKRSContext2D } from "@napi-rs/canvas"
 
-import type { ImageWatermarkPosition } from "@/lib/site-settings-app-state"
+import type { ImageWatermarkPosition } from "@/lib/site-settings-app-state.types"
+import { buildUploadStoragePath } from "@/lib/upload-path"
 import {
+  getAvailableWatermarkFontAssets,
   isCenteredWatermark,
   isRightAlignedWatermark,
+  normalizeWatermarkFontFamily,
+  resolveKnownWatermarkFontFamily,
   resolveWatermarkPlacement,
   resolveWatermarkPresentation,
-  WATERMARK_FONT_ALIAS,
+  WATERMARK_BUILTIN_FONT_ASSETS,
+  WATERMARK_FONT_UPLOAD_FOLDER,
   WATERMARK_PREVIEW_HEIGHT,
   WATERMARK_PREVIEW_WIDTH,
   WATERMARK_TEXT_MAX_LINES,
+  type WatermarkFontAsset,
   type WatermarkRenderPresentation,
 } from "@/lib/watermark-lib"
 
 type WatermarkRenderableSettings = {
+  logo?: {
+    enabled: boolean
+    buffer?: Buffer | null
+    margin: number
+    opacity: number
+    position: ImageWatermarkPosition
+    scalePercent: number
+    tiled: boolean
+  }
   color: string
+  fontAssets?: readonly WatermarkFontAsset[]
   fontSize: number
   fontFamily: string
   logoBuffer?: Buffer | null
@@ -25,8 +41,10 @@ type WatermarkRenderableSettings = {
   margin: number
   opacity: number
   position: ImageWatermarkPosition
+  textEnabled?: boolean
   text: string
   tiled: boolean
+  uploadLocalPath?: string | null
 }
 
 type WatermarkLineLayout = {
@@ -58,14 +76,11 @@ type PreparedImageWatermarkLayout = {
 }
 
 type GlobalWatermarkRuntimeState = {
-  __bbsWatermarkFontStatus?: "ready" | "failed"
-  __bbsWatermarkFontWarningLogged?: boolean
+  __bbsWatermarkFontStatusByAlias?: Record<string, "ready" | "failed">
+  __bbsWatermarkFontWarningByAlias?: Record<string, boolean>
 }
 
 const globalForWatermarkRuntime = globalThis as typeof globalThis & GlobalWatermarkRuntimeState
-const WATERMARK_FONT_CANDIDATE_PATHS = [
-  path.join(process.cwd(), "public", "fonts", "zhi-mang-xing.ttf")
-]
 const TOKEN_PATTERN = /[\u3400-\u9fff]|[A-Za-z0-9@#&_.:/+\-]+|\s+|./gu
 const JPEG_QUALITY = 92
 const WEBP_QUALITY = 92
@@ -75,44 +90,88 @@ const AVIF_CONFIG: AvifConfig = {
   speed: 5,
 }
 
-function resolveWatermarkFontPath() {
-  return WATERMARK_FONT_CANDIDATE_PATHS.find((candidatePath) => fs.existsSync(candidatePath)) ?? null
+function getFontStatusByAlias() {
+  globalForWatermarkRuntime.__bbsWatermarkFontStatusByAlias ??= {}
+  return globalForWatermarkRuntime.__bbsWatermarkFontStatusByAlias
 }
 
-function ensureWatermarkFontRegistered() {
-  if (globalForWatermarkRuntime.__bbsWatermarkFontStatus === "ready") {
+function getFontWarningByAlias() {
+  globalForWatermarkRuntime.__bbsWatermarkFontWarningByAlias ??= {}
+  return globalForWatermarkRuntime.__bbsWatermarkFontWarningByAlias
+}
+
+function getPrimaryFontAlias(fontFamily: string) {
+  const normalized = normalizeWatermarkFontFamily(fontFamily)
+  return normalized
+    .split(",")[0]
+    ?.trim()
+    .replace(/^["']+|["']+$/g, "") ?? ""
+}
+
+function isBuiltinWatermarkFontAsset(asset: WatermarkFontAsset) {
+  return WATERMARK_BUILTIN_FONT_ASSETS.some((item) => item.id === asset.id)
+}
+
+function resolveWatermarkFontPath(asset: WatermarkFontAsset, uploadLocalPath: string | null | undefined) {
+  if (isBuiltinWatermarkFontAsset(asset)) {
+    const fontPath = path.join(process.cwd(), "public", "fonts", asset.fileName)
+    return fs.existsSync(fontPath) ? fontPath : null
+  }
+
+  const fontPath = buildUploadStoragePath(uploadLocalPath, WATERMARK_FONT_UPLOAD_FOLDER, asset.fileName)
+  return fs.existsSync(fontPath) ? fontPath : null
+}
+
+function ensureWatermarkFontRegistered(asset: WatermarkFontAsset, uploadLocalPath: string | null | undefined) {
+  const alias = getPrimaryFontAlias(asset.fontFamily)
+
+  if (!alias) {
+    return false
+  }
+
+  const statusByAlias = getFontStatusByAlias()
+  if (statusByAlias[alias] === "ready") {
     return true
   }
 
-  if (globalForWatermarkRuntime.__bbsWatermarkFontStatus === "failed") {
+  if (statusByAlias[alias] === "failed") {
     return false
   }
 
   try {
-    if (!GlobalFonts.has(WATERMARK_FONT_ALIAS)) {
-      const fontPath = resolveWatermarkFontPath()
+    if (!GlobalFonts.has(alias)) {
+      const fontPath = resolveWatermarkFontPath(asset, uploadLocalPath)
       if (!fontPath) {
-        throw new Error(`No watermark font file found in ${WATERMARK_FONT_CANDIDATE_PATHS.join(", ")}`)
+        throw new Error(`No watermark font file found for ${asset.id}`)
       }
 
-      const registered = GlobalFonts.registerFromPath(fontPath, WATERMARK_FONT_ALIAS)
+      const registered = GlobalFonts.registerFromPath(fontPath, alias)
 
       if (!registered) {
-        throw new Error(`Failed to register watermark font from ${fontPath}`)
+        throw new Error(`Failed to register watermark font ${alias} from ${fontPath}`)
       }
     }
 
-    globalForWatermarkRuntime.__bbsWatermarkFontStatus = "ready"
+    statusByAlias[alias] = "ready"
     return true
   } catch (error) {
-    globalForWatermarkRuntime.__bbsWatermarkFontStatus = "failed"
+    statusByAlias[alias] = "failed"
 
-    if (!globalForWatermarkRuntime.__bbsWatermarkFontWarningLogged) {
-      console.warn("[watermark] failed to register custom watermark font, fallback to system fonts", error)
-      globalForWatermarkRuntime.__bbsWatermarkFontWarningLogged = true
+    const warningByAlias = getFontWarningByAlias()
+    if (!warningByAlias[alias]) {
+      console.warn("[watermark] failed to register watermark font, fallback to default fonts", error)
+      warningByAlias[alias] = true
     }
 
     return false
+  }
+}
+
+function ensureConfiguredWatermarkFontsRegistered(settings: WatermarkRenderableSettings) {
+  const assets = getAvailableWatermarkFontAssets(settings.fontAssets ?? [])
+
+  for (const asset of assets) {
+    ensureWatermarkFontRegistered(asset, settings.uploadLocalPath)
   }
 }
 
@@ -516,9 +575,10 @@ function renderTiledWatermark(
 }
 
 function renderWatermarkOnContext(ctx: SKRSContext2D, width: number, height: number, settings: WatermarkRenderableSettings) {
-  const resolvedSettings = { ...settings }
-  if (resolvedSettings.fontFamily.includes(WATERMARK_FONT_ALIAS)) {
-    ensureWatermarkFontRegistered()
+  ensureConfiguredWatermarkFontsRegistered(settings)
+  const resolvedSettings = {
+    ...settings,
+    fontFamily: resolveKnownWatermarkFontFamily(settings.fontFamily, settings.fontAssets ?? []),
   }
 
   ctx.save()
@@ -547,17 +607,31 @@ function resolveImageWatermarkScalePercent(value: number) {
   return Math.min(60, Math.max(1, normalized))
 }
 
-async function prepareImageWatermarkLayout(width: number, settings: WatermarkRenderableSettings): Promise<PreparedImageWatermarkLayout | null> {
-  if (!settings.logoBuffer || settings.logoBuffer.byteLength === 0) {
+type LogoWatermarkRenderableSettings = NonNullable<WatermarkRenderableSettings["logo"]>
+
+function resolveLogoWatermarkSettings(settings: WatermarkRenderableSettings): LogoWatermarkRenderableSettings {
+  return settings.logo ?? {
+    enabled: Boolean(settings.logoBuffer),
+    buffer: settings.logoBuffer,
+    margin: settings.margin,
+    opacity: settings.opacity,
+    position: settings.position,
+    scalePercent: settings.logoScalePercent,
+    tiled: settings.tiled,
+  }
+}
+
+async function prepareImageWatermarkLayout(width: number, settings: LogoWatermarkRenderableSettings): Promise<PreparedImageWatermarkLayout | null> {
+  if (!settings.enabled || !settings.buffer || settings.buffer.byteLength === 0) {
     return null
   }
 
-  const image = await loadImage(settings.logoBuffer)
+  const image = await loadImage(settings.buffer)
   if (image.width <= 0 || image.height <= 0) {
     return null
   }
 
-  const scalePercent = resolveImageWatermarkScalePercent(settings.logoScalePercent)
+  const scalePercent = resolveImageWatermarkScalePercent(settings.scalePercent)
   const targetWidth = Math.max(1, Math.round(width * (scalePercent / 100)))
   const scaleRatio = targetWidth / image.width
   const targetHeight = Math.max(1, Math.round(image.height * scaleRatio))
@@ -575,7 +649,7 @@ function renderSingleImageWatermark(
   ctx: SKRSContext2D,
   width: number,
   height: number,
-  settings: WatermarkRenderableSettings,
+  settings: LogoWatermarkRenderableSettings,
   layout: PreparedImageWatermarkLayout,
 ) {
   const placement = resolveWatermarkPlacement({
@@ -597,7 +671,7 @@ function renderTiledImageWatermark(
   ctx: SKRSContext2D,
   width: number,
   height: number,
-  settings: WatermarkRenderableSettings,
+  settings: LogoWatermarkRenderableSettings,
   layout: PreparedImageWatermarkLayout,
 ) {
   const margin = Math.max(0, Math.round(settings.margin || 0))
@@ -646,7 +720,7 @@ function renderTiledImageWatermark(
   ctx.restore()
 }
 
-async function renderImageWatermarkOnContext(ctx: SKRSContext2D, width: number, height: number, settings: WatermarkRenderableSettings) {
+async function renderImageWatermarkOnContext(ctx: SKRSContext2D, width: number, height: number, settings: LogoWatermarkRenderableSettings) {
   const layout = await prepareImageWatermarkLayout(width, settings)
 
   if (!layout) {
@@ -663,8 +737,9 @@ async function renderImageWatermarkOnContext(ctx: SKRSContext2D, width: number, 
 }
 
 async function renderConfiguredWatermarkOnContext(ctx: SKRSContext2D, width: number, height: number, settings: WatermarkRenderableSettings) {
-  const imageRendered = await renderImageWatermarkOnContext(ctx, width, height, settings)
-  const textRendered = settings.text.trim()
+  const logoSettings = resolveLogoWatermarkSettings(settings)
+  const imageRendered = await renderImageWatermarkOnContext(ctx, width, height, logoSettings)
+  const textRendered = (settings.textEnabled ?? true) && settings.text.trim()
     ? renderWatermarkOnContext(ctx, width, height, settings)
     : false
   return imageRendered || textRendered

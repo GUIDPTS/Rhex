@@ -1,4 +1,4 @@
-import type { ImageWatermarkPosition } from "@/lib/site-settings-app-state"
+import type { ImageWatermarkPosition } from "@/lib/site-settings-app-state.types"
 
 export type WatermarkRgbColor = {
   red: number
@@ -23,9 +23,28 @@ export type WatermarkRenderPresentation = {
   text: string
 }
 
+export type WatermarkFontAsset = {
+  id: string
+  label: string
+  fileName: string
+  fontFamily: string
+  urlPath: string
+}
+
 export const WATERMARK_FONT_ALIAS = "BBS Watermark"
 export const WATERMARK_HANDWRITING_FONT_FAMILY = `"${WATERMARK_FONT_ALIAS}", cursive`
-export const WATERMARK_DEFAULT_FONT_FAMILY = `"Microsoft YaHei", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Source Han Sans SC", sans-serif`
+export const WATERMARK_DEFAULT_FONT_FAMILY = `${WATERMARK_HANDWRITING_FONT_FAMILY}, sans-serif`
+export const WATERMARK_FONT_UPLOAD_FOLDER = "watermark-fonts"
+export const WATERMARK_CUSTOM_FONT_ALIAS_PREFIX = "BBS Watermark Custom"
+export const WATERMARK_BUILTIN_FONT_ASSETS: WatermarkFontAsset[] = [
+  {
+    id: "builtin-zhimangxing",
+    label: "芝芒行书",
+    fileName: "zhi-mang-xing.ttf",
+    fontFamily: WATERMARK_HANDWRITING_FONT_FAMILY,
+    urlPath: "/fonts/zhi-mang-xing.ttf",
+  },
+]
 export const WATERMARK_PREVIEW_WIDTH = 1280
 export const WATERMARK_PREVIEW_HEIGHT = 720
 
@@ -90,6 +109,113 @@ export function normalizeWatermarkHexColor(color: string) {
 
 export const WATERMARK_TEXT_MAX_LENGTH = 400
 export const WATERMARK_TEXT_MAX_LINES = 6
+
+export function normalizeWatermarkFontAssetId(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : ""
+  return /^[a-z0-9][a-z0-9_-]{2,63}$/.test(normalized) ? normalized : ""
+}
+
+export function normalizeWatermarkFontFileName(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim() : ""
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.(?:ttf|otf|ttc)$/i.test(normalized) && !normalized.includes("..")
+    ? normalized
+    : ""
+}
+
+export function normalizeWatermarkFontLabel(value: unknown, fallback = "自定义字体") {
+  const normalized = typeof value === "string"
+    ? value.replace(/\s+/g, " ").trim().slice(0, 40)
+    : ""
+
+  return normalized || fallback
+}
+
+export function buildWatermarkCustomFontFamily(id: string) {
+  const normalizedId = normalizeWatermarkFontAssetId(id)
+  return normalizedId ? `"${WATERMARK_CUSTOM_FONT_ALIAS_PREFIX} ${normalizedId}", sans-serif` : ""
+}
+
+export function normalizeWatermarkFontAsset(value: unknown): WatermarkFontAsset | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null
+  }
+
+  const candidate = value as Record<string, unknown>
+  const id = normalizeWatermarkFontAssetId(candidate.id)
+  const fileName = normalizeWatermarkFontFileName(candidate.fileName)
+
+  if (!id || !fileName) {
+    return null
+  }
+
+  const fontFamily = WATERMARK_BUILTIN_FONT_ASSETS.some((asset) => asset.id === id)
+    ? normalizeWatermarkFontFamily(candidate.fontFamily)
+    : buildWatermarkCustomFontFamily(id)
+  if (!fontFamily) {
+    return null
+  }
+
+  return {
+    id,
+    label: normalizeWatermarkFontLabel(candidate.label),
+    fileName,
+    fontFamily,
+    urlPath: typeof candidate.urlPath === "string" ? candidate.urlPath.trim().slice(0, 300) : "",
+  }
+}
+
+export function normalizeWatermarkFontAssets(value: unknown): WatermarkFontAsset[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const assets: WatermarkFontAsset[] = []
+  const seenIds = new Set<string>()
+  for (const item of value) {
+    const asset = normalizeWatermarkFontAsset(item)
+    if (!asset || seenIds.has(asset.id)) {
+      continue
+    }
+    assets.push(asset)
+    seenIds.add(asset.id)
+  }
+
+  return assets.slice(0, 20)
+}
+
+export function getAvailableWatermarkFontAssets(customAssets: readonly WatermarkFontAsset[] = []) {
+  const assets = [...WATERMARK_BUILTIN_FONT_ASSETS]
+  const seenIds = new Set(assets.map((asset) => asset.id))
+
+  for (const asset of customAssets) {
+    if (seenIds.has(asset.id)) {
+      continue
+    }
+    assets.push(asset)
+    seenIds.add(asset.id)
+  }
+
+  return assets
+}
+
+export function isKnownWatermarkFontFamily(value: unknown, customAssets: readonly WatermarkFontAsset[] = []) {
+  const normalizedValue = normalizeWatermarkFontFamily(value)
+  if (!normalizedValue) {
+    return true
+  }
+
+  return getAvailableWatermarkFontAssets(customAssets)
+    .some((asset) => normalizeWatermarkFontFamily(asset.fontFamily) === normalizedValue)
+}
+
+export function resolveKnownWatermarkFontFamily(value: unknown, customAssets: readonly WatermarkFontAsset[] = []) {
+  const normalizedValue = normalizeWatermarkFontFamily(value)
+  if (!normalizedValue) {
+    return ""
+  }
+
+  return isKnownWatermarkFontFamily(normalizedValue, customAssets) ? normalizedValue : ""
+}
 
 export function normalizeWatermarkText(value: string) {
   if (typeof value !== "string") {

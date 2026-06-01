@@ -26,6 +26,7 @@ interface LeaderboardUserPresentationInput {
 
 interface CommunityLeaderboardUser {
   userId: number
+  publicUid: string | null
   username: string
   displayName: string
   avatarPath: string | null
@@ -84,6 +85,7 @@ async function resolveLeaderboardPresentation(input: LeaderboardUserPresentation
   return {
     displayName: presented.displayName,
     avatarPath: presented.avatarPath ?? null,
+    publicUid: presented.publicUid ?? null,
   }
 }
 
@@ -154,6 +156,7 @@ export async function getPointsLeaderboard(
 
         return {
           userId: row.id,
+          publicUid: presentation.publicUid,
           username: row.username,
           displayName: presentation.displayName,
           avatarPath: presentation.avatarPath,
@@ -301,6 +304,7 @@ export async function getCheckInLeaderboard(
 
         return {
           userId: row.userId,
+          publicUid: presentation.publicUid,
           username: row.user.username,
           displayName: presentation.displayName,
           avatarPath: presentation.avatarPath,

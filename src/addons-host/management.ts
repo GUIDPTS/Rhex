@@ -406,6 +406,14 @@ export async function runAddonManagementAction(action: AddonManagementAction, ad
         throw new Error(relationCheck.blockingIssues.join("；"))
       }
 
+      await executeAddonActionHook("addon.enabled.before", {
+        addonId: resolvedAddonId,
+        version: addon.manifest.version,
+      }, {
+        throwOnError: true,
+        pathname: `/__addons/enable/${resolvedAddonId}`,
+      })
+
       await persistAddonState(addon, {
         ...ensuredState,
         enabled: true,
@@ -435,6 +443,14 @@ export async function runAddonManagementAction(action: AddonManagementAction, ad
       if (dependentAddonIssues.length > 0) {
         throw new Error(dependentAddonIssues.join("；"))
       }
+
+      await executeAddonActionHook("addon.disabled.before", {
+        addonId: resolvedAddonId,
+        version: addon.manifest.version,
+      }, {
+        throwOnError: true,
+        pathname: `/__addons/disable/${resolvedAddonId}`,
+      })
 
       await persistAddonState(addon, {
         ...ensuredState,

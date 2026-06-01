@@ -1,5 +1,6 @@
 import type { ImageWatermarkPosition } from "@/lib/site-settings-app-state"
 import type { UploadProvider } from "@/lib/upload-provider"
+import type { WatermarkFontAsset } from "@/lib/watermark-lib"
 
 export interface SiteSettingsMarkdownEmojiItem {
   shortcode: string
@@ -23,7 +24,23 @@ export interface SiteSettingsUploadData {
   uploadAvatarMaxFileSizeMb: number
   markdownImageUploadEnabled: boolean
   imageWatermarkEnabled: boolean
+  imageWatermarkTextEnabled: boolean
   imageWatermarkText: string
+  imageWatermarkTextPosition: ImageWatermarkPosition
+  imageWatermarkTextTiled: boolean
+  imageWatermarkTextOpacity: number
+  imageWatermarkTextFontSize: number
+  imageWatermarkTextFontFamily: string
+  imageWatermarkFontAssets: WatermarkFontAsset[]
+  imageWatermarkTextMargin: number
+  imageWatermarkTextColor: string
+  imageWatermarkLogoEnabled: boolean
+  imageWatermarkLogoPath: string
+  imageWatermarkLogoPosition: ImageWatermarkPosition
+  imageWatermarkLogoTiled: boolean
+  imageWatermarkLogoOpacity: number
+  imageWatermarkLogoMargin: number
+  imageWatermarkLogoScalePercent: number
   imageWatermarkPosition: ImageWatermarkPosition
   imageWatermarkTiled: boolean
   imageWatermarkOpacity: number
@@ -31,8 +48,6 @@ export interface SiteSettingsUploadData {
   imageWatermarkFontFamily: string
   imageWatermarkMargin: number
   imageWatermarkColor: string
-  imageWatermarkLogoPath: string
-  imageWatermarkLogoScalePercent: number
   attachmentUploadEnabled: boolean
   attachmentDownloadEnabled: boolean
   attachmentMinUploadLevel: number

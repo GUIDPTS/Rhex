@@ -8,6 +8,10 @@ import {
   writeSiteSettingsState,
 } from "@/lib/site-settings-app-state.types"
 import { normalizeMessagePromptAudioPath } from "@/lib/message-prompt-audio"
+import {
+  normalizeWatermarkFontAssets,
+  resolveKnownWatermarkFontFamily,
+} from "@/lib/watermark-lib"
 import type {
   AttachmentFeatureSettings,
   ImageWatermarkPosition,
@@ -51,6 +55,7 @@ export function mergeMarkdownImageUploadSettings(
 export function resolveImageWatermarkSettings(options: {
   appStateJson?: string | null
   enabledFallback?: boolean
+  textEnabledFallback?: boolean
   textFallback?: string
   positionFallback?: ImageWatermarkPosition
   tiledFallback?: boolean
@@ -59,83 +64,186 @@ export function resolveImageWatermarkSettings(options: {
   fontFamilyFallback?: string
   marginFallback?: number
   colorFallback?: string
+  logoEnabledFallback?: boolean
   logoPathFallback?: string
+  logoPositionFallback?: ImageWatermarkPosition
+  logoTiledFallback?: boolean
+  logoOpacityFallback?: number
+  logoMarginFallback?: number
   logoScalePercentFallback?: number
 } = {}): ImageWatermarkSettings {
   const siteSettingsState = readSiteSettingsState(options.appStateJson)
   const imageWatermark = isRecord(siteSettingsState.imageWatermark)
     ? siteSettingsState.imageWatermark
     : {}
+  const legacyEnabled = typeof imageWatermark.enabled === "boolean"
+    ? imageWatermark.enabled
+    : options.enabledFallback ?? false
+  const legacyPosition = normalizeImageWatermarkPosition(
+    imageWatermark.position,
+    options.positionFallback ?? "BOTTOM_RIGHT",
+  )
+  const legacyTiled = typeof imageWatermark.tiled === "boolean"
+    ? imageWatermark.tiled
+    : options.tiledFallback ?? false
+  const legacyOpacity = Math.min(
+    100,
+    Math.max(
+      0,
+      normalizeNonNegativeInteger(
+        imageWatermark.opacity,
+        normalizeNonNegativeInteger(options.opacityFallback, 22),
+      ),
+    ),
+  )
+  const legacyFontSize = Math.min(
+    160,
+    Math.max(
+      8,
+      normalizeNonNegativeInteger(
+        imageWatermark.fontSize,
+        normalizeNonNegativeInteger(options.fontSizeFallback, 24),
+      ),
+    ),
+  )
+  const legacyFontFamily =
+    typeof imageWatermark.fontFamily === "string"
+      ? imageWatermark.fontFamily.replace(/\s+/g, " ").trim().slice(0, 240)
+      : (options.fontFamilyFallback ?? "").replace(/\s+/g, " ").trim().slice(0, 240)
+  const fontAssets = normalizeWatermarkFontAssets(imageWatermark.fontAssets)
+  const legacyMargin = Math.min(
+    200,
+    Math.max(
+      0,
+      normalizeNonNegativeInteger(
+        imageWatermark.margin,
+        normalizeNonNegativeInteger(options.marginFallback, 24),
+      ),
+    ),
+  )
+  const legacyColor = normalizeHexColor(
+    imageWatermark.color,
+    normalizeHexColor(options.colorFallback, "#FFFFFF"),
+  )
+  const logoPath =
+    typeof imageWatermark.logoPath === "string"
+      ? imageWatermark.logoPath.trim().slice(0, 1000)
+      : (options.logoPathFallback ?? "").trim().slice(0, 1000)
+  const text =
+    typeof imageWatermark.text === "string"
+      ? imageWatermark.text.trim().slice(0, 120)
+      : (options.textFallback ?? "").trim().slice(0, 120)
+  const logoScalePercent = Math.min(
+    60,
+    Math.max(
+      1,
+      normalizeNonNegativeInteger(
+        imageWatermark.logoScalePercent,
+        normalizeNonNegativeInteger(options.logoScalePercentFallback, 16),
+      ),
+    ),
+  )
+  const textEnabled = typeof imageWatermark.textEnabled === "boolean"
+    ? imageWatermark.textEnabled
+    : options.textEnabledFallback ?? (legacyEnabled && Boolean(text))
+  const logoEnabled = typeof imageWatermark.logoEnabled === "boolean"
+    ? imageWatermark.logoEnabled
+    : options.logoEnabledFallback ?? (legacyEnabled && Boolean(logoPath))
 
   return {
-    enabled:
-      typeof imageWatermark.enabled === "boolean"
-        ? imageWatermark.enabled
-        : options.enabledFallback ?? false,
-    text:
-      typeof imageWatermark.text === "string"
-        ? imageWatermark.text.trim().slice(0, 120)
-        : (options.textFallback ?? "").trim().slice(0, 120),
-    position: normalizeImageWatermarkPosition(
-      imageWatermark.position,
-      options.positionFallback ?? "BOTTOM_RIGHT",
+    enabled: legacyEnabled,
+    textEnabled,
+    text,
+    textPosition: normalizeImageWatermarkPosition(
+      imageWatermark.textPosition,
+      legacyPosition,
     ),
-    tiled:
-      typeof imageWatermark.tiled === "boolean"
-        ? imageWatermark.tiled
-        : options.tiledFallback ?? false,
-    opacity: Math.min(
+    textTiled:
+      typeof imageWatermark.textTiled === "boolean"
+        ? imageWatermark.textTiled
+        : legacyTiled,
+    textOpacity: Math.min(
       100,
       Math.max(
         0,
         normalizeNonNegativeInteger(
-          imageWatermark.opacity,
-          normalizeNonNegativeInteger(options.opacityFallback, 22),
+          imageWatermark.textOpacity,
+          legacyOpacity,
         ),
       ),
     ),
-    fontSize: Math.min(
+    textFontSize: Math.min(
       160,
       Math.max(
         8,
         normalizeNonNegativeInteger(
-          imageWatermark.fontSize,
-          normalizeNonNegativeInteger(options.fontSizeFallback, 24),
+          imageWatermark.textFontSize,
+          legacyFontSize,
         ),
       ),
     ),
-    fontFamily:
-      typeof imageWatermark.fontFamily === "string"
-        ? imageWatermark.fontFamily.replace(/\s+/g, " ").trim().slice(0, 240)
-        : (options.fontFamilyFallback ?? "").replace(/\s+/g, " ").trim().slice(0, 240),
-    margin: Math.min(
+    fontAssets,
+    textFontFamily: resolveKnownWatermarkFontFamily(
+      typeof imageWatermark.textFontFamily === "string"
+        ? imageWatermark.textFontFamily
+        : legacyFontFamily,
+      fontAssets,
+    ),
+    textMargin: Math.min(
       200,
       Math.max(
         0,
         normalizeNonNegativeInteger(
-          imageWatermark.margin,
-          normalizeNonNegativeInteger(options.marginFallback, 24),
+          imageWatermark.textMargin,
+          legacyMargin,
         ),
       ),
     ),
-    color: normalizeHexColor(
-      imageWatermark.color,
-      normalizeHexColor(options.colorFallback, "#FFFFFF"),
+    textColor: normalizeHexColor(
+      imageWatermark.textColor,
+      legacyColor,
     ),
-    logoPath:
-      typeof imageWatermark.logoPath === "string"
-        ? imageWatermark.logoPath.trim().slice(0, 1000)
-        : (options.logoPathFallback ?? "").trim().slice(0, 1000),
-    logoScalePercent: Math.min(
-      60,
+    logoEnabled,
+    logoPath,
+    logoPosition: normalizeImageWatermarkPosition(
+      imageWatermark.logoPosition,
+      options.logoPositionFallback ?? legacyPosition,
+    ),
+    logoTiled:
+      typeof imageWatermark.logoTiled === "boolean"
+        ? imageWatermark.logoTiled
+        : options.logoTiledFallback ?? legacyTiled,
+    logoOpacity: Math.min(
+      100,
       Math.max(
-        1,
+        0,
         normalizeNonNegativeInteger(
-          imageWatermark.logoScalePercent,
-          normalizeNonNegativeInteger(options.logoScalePercentFallback, 16),
+          imageWatermark.logoOpacity,
+          normalizeNonNegativeInteger(options.logoOpacityFallback, legacyOpacity),
         ),
       ),
     ),
+    logoMargin: Math.min(
+      200,
+      Math.max(
+        0,
+        normalizeNonNegativeInteger(
+          imageWatermark.logoMargin,
+          normalizeNonNegativeInteger(options.logoMarginFallback, legacyMargin),
+        ),
+      ),
+    ),
+    logoScalePercent,
+    position: normalizeImageWatermarkPosition(
+      imageWatermark.position,
+      legacyPosition,
+    ),
+    tiled: legacyTiled,
+    opacity: legacyOpacity,
+    fontSize: legacyFontSize,
+    fontFamily: resolveKnownWatermarkFontFamily(legacyFontFamily, fontAssets),
+    margin: legacyMargin,
+    color: legacyColor,
   }
 }
 
@@ -144,21 +252,37 @@ export function mergeImageWatermarkSettings(
   input: ImageWatermarkSettings,
 ) {
   const siteSettingsState = readSiteSettingsState(appStateJson)
+  const fontAssets = normalizeWatermarkFontAssets(input.fontAssets)
+  const textFontFamily = resolveKnownWatermarkFontFamily(input.textFontFamily ?? input.fontFamily, fontAssets)
 
   return writeSiteSettingsState(appStateJson, {
     ...siteSettingsState,
     imageWatermark: {
       enabled: Boolean(input.enabled),
+      fontAssets,
+      textEnabled: Boolean(input.textEnabled),
       text: String(input.text ?? "").trim().slice(0, 120),
-      position: normalizeImageWatermarkPosition(input.position, "BOTTOM_RIGHT"),
-      tiled: Boolean(input.tiled),
-      opacity: Math.min(100, Math.max(0, normalizeNonNegativeInteger(input.opacity, 22))),
-      fontSize: Math.min(160, Math.max(8, normalizeNonNegativeInteger(input.fontSize, 24))),
-      fontFamily: String(input.fontFamily ?? "").replace(/\s+/g, " ").trim().slice(0, 240),
-      margin: Math.min(200, Math.max(0, normalizeNonNegativeInteger(input.margin, 24))),
-      color: normalizeHexColor(input.color, "#FFFFFF"),
+      textPosition: normalizeImageWatermarkPosition(input.textPosition, "BOTTOM_RIGHT"),
+      textTiled: Boolean(input.textTiled),
+      textOpacity: Math.min(100, Math.max(0, normalizeNonNegativeInteger(input.textOpacity, 22))),
+      textFontSize: Math.min(160, Math.max(8, normalizeNonNegativeInteger(input.textFontSize, 24))),
+      textFontFamily,
+      textMargin: Math.min(200, Math.max(0, normalizeNonNegativeInteger(input.textMargin, 24))),
+      textColor: normalizeHexColor(input.textColor, "#FFFFFF"),
+      logoEnabled: Boolean(input.logoEnabled),
       logoPath: String(input.logoPath ?? "").trim().slice(0, 1000),
+      logoPosition: normalizeImageWatermarkPosition(input.logoPosition, "BOTTOM_LEFT"),
+      logoTiled: Boolean(input.logoTiled),
+      logoOpacity: Math.min(100, Math.max(0, normalizeNonNegativeInteger(input.logoOpacity, 22))),
+      logoMargin: Math.min(200, Math.max(0, normalizeNonNegativeInteger(input.logoMargin, 24))),
       logoScalePercent: Math.min(60, Math.max(1, normalizeNonNegativeInteger(input.logoScalePercent, 16))),
+      position: normalizeImageWatermarkPosition(input.textPosition ?? input.position, "BOTTOM_RIGHT"),
+      tiled: Boolean(input.textTiled ?? input.tiled),
+      opacity: Math.min(100, Math.max(0, normalizeNonNegativeInteger(input.textOpacity ?? input.opacity, 22))),
+      fontSize: Math.min(160, Math.max(8, normalizeNonNegativeInteger(input.textFontSize ?? input.fontSize, 24))),
+      fontFamily: textFontFamily,
+      margin: Math.min(200, Math.max(0, normalizeNonNegativeInteger(input.textMargin ?? input.margin, 24))),
+      color: normalizeHexColor(input.textColor ?? input.color, "#FFFFFF"),
     },
   })
 }

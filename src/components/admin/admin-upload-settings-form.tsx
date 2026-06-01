@@ -3,7 +3,7 @@
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useDeferredValue, useState, useTransition } from "react"
-import { ImageIcon, Upload, X } from "lucide-react"
+import { ImageIcon, Type, Upload, X } from "lucide-react"
 
 import { AccessThresholdSelectGroup } from "@/components/access-threshold-select-group"
 import {
@@ -18,12 +18,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import type { AccessThresholdOption } from "@/lib/access-threshold-options"
-import { saveAdminSiteSettings, uploadAdminWatermarkLogoFile } from "@/lib/admin-site-settings-client"
+import { saveAdminSiteSettings, uploadAdminWatermarkFontFile, uploadAdminWatermarkLogoFile } from "@/lib/admin-site-settings-client"
 import { getAdminSettingsHref } from "@/lib/admin-settings-navigation"
 import type { AdminSettingsSectionKey } from "@/lib/admin-navigation"
 import type { UploadProvider } from "@/lib/upload-provider"
 import type { ImageWatermarkPosition } from "@/lib/site-settings-app-state"
-import { WATERMARK_FONT_ALIAS } from "@/lib/watermark-lib"
+import {
+  getAvailableWatermarkFontAssets,
+  WATERMARK_BUILTIN_FONT_ASSETS,
+  type WatermarkFontAsset,
+} from "@/lib/watermark-lib"
 
 interface AdminUploadSettingsFormProps {
   initialSettings: {
@@ -41,15 +45,22 @@ interface AdminUploadSettingsFormProps {
     uploadAvatarMaxFileSizeMb: number
     markdownImageUploadEnabled: boolean
     imageWatermarkEnabled: boolean
+    imageWatermarkTextEnabled: boolean
     imageWatermarkText: string
-    imageWatermarkPosition: ImageWatermarkPosition
-    imageWatermarkTiled: boolean
-    imageWatermarkOpacity: number
-    imageWatermarkFontSize: number
-    imageWatermarkFontFamily: string
-    imageWatermarkMargin: number
-    imageWatermarkColor: string
+    imageWatermarkTextPosition: ImageWatermarkPosition
+    imageWatermarkTextTiled: boolean
+    imageWatermarkTextOpacity: number
+    imageWatermarkTextFontSize: number
+    imageWatermarkTextFontFamily: string
+    imageWatermarkFontAssets: WatermarkFontAsset[]
+    imageWatermarkTextMargin: number
+    imageWatermarkTextColor: string
+    imageWatermarkLogoEnabled: boolean
     imageWatermarkLogoPath: string
+    imageWatermarkLogoPosition: ImageWatermarkPosition
+    imageWatermarkLogoTiled: boolean
+    imageWatermarkLogoOpacity: number
+    imageWatermarkLogoMargin: number
     imageWatermarkLogoScalePercent: number
     attachmentUploadEnabled: boolean
     attachmentDownloadEnabled: boolean
@@ -78,7 +89,6 @@ function normalizeSliderNumber(value: string, fallback: number, min: number, max
 }
 
 type UploadSettingsTabKey = "storage" | "watermark" | "attachment"
-type WatermarkFontPresetKey = "default" | "zhimangxing" | "yahei" | "pingfang" | "noto-sans" | "simhei" | "kaiti" | "custom"
 
 const UPLOAD_TABS = [
   { key: "storage", label: "上传配置" },
@@ -86,34 +96,41 @@ const UPLOAD_TABS = [
   { key: "attachment", label: "附件配置" },
 ] as const
 
-const WATERMARK_FONT_PRESETS: Array<{
-  key: Exclude<WatermarkFontPresetKey, "custom">
-  label: string
-  value: string
-}> = [
-  { key: "default", label: "默认字体栈", value: "" },
-  { key: "zhimangxing", label: "芝芒行书", value: `"${WATERMARK_FONT_ALIAS}", cursive` },
-  { key: "yahei", label: "微软雅黑", value: '"Microsoft YaHei", sans-serif' },
-  { key: "pingfang", label: "苹方", value: '"PingFang SC", "Hiragino Sans GB", sans-serif' },
-  { key: "noto-sans", label: "思源黑体", value: '"Noto Sans SC", "Source Han Sans SC", sans-serif' },
-  { key: "simhei", label: "黑体", value: '"SimHei", sans-serif' },
-  { key: "kaiti", label: "楷体", value: '"KaiTi", serif' },
+const WATERMARK_POSITION_OPTIONS = [
+  { value: "TOP_LEFT", label: "左上角" },
+  { value: "TOP_RIGHT", label: "右上角" },
+  { value: "BOTTOM_LEFT", label: "左下角" },
+  { value: "BOTTOM_RIGHT", label: "右下角" },
+  { value: "CENTER", label: "居中" },
 ]
-
-function normalizeFontFamilyValue(value: string) {
-  return value.replace(/\s+/g, " ").trim()
-}
-
-function resolveWatermarkFontPresetKey(value: string): WatermarkFontPresetKey {
-  const normalizedValue = normalizeFontFamilyValue(value)
-  const matchedPreset = WATERMARK_FONT_PRESETS.find((preset) => normalizeFontFamilyValue(preset.value) === normalizedValue)
-  return matchedPreset?.key ?? "custom"
-}
 
 function resolveUploadTab(initialSubTab?: string): UploadSettingsTabKey {
   return UPLOAD_TABS.some((item) => item.key === initialSubTab)
     ? (initialSubTab as UploadSettingsTabKey)
     : "storage"
+}
+
+function resolveDefaultWatermarkFontFamily() {
+  return WATERMARK_BUILTIN_FONT_ASSETS[0]?.fontFamily ?? ""
+}
+
+function resolveKnownWatermarkFontFamilyForForm(value: string, fontAssets: readonly WatermarkFontAsset[]) {
+  const availableFonts = getAvailableWatermarkFontAssets(fontAssets)
+  return availableFonts.some((asset) => asset.fontFamily === value)
+    ? value
+    : resolveDefaultWatermarkFontFamily()
+}
+
+function mergeWatermarkFontAssets(currentAssets: readonly WatermarkFontAsset[], asset: WatermarkFontAsset) {
+  const nextAssets = currentAssets.some((item) => item.id === asset.id)
+    ? currentAssets.map((item) => item.id === asset.id ? asset : item)
+    : [...currentAssets, asset]
+
+  return nextAssets.slice(0, 20)
+}
+
+function isWatermarkFontFileName(fileName: string) {
+  return /\.(?:ttf|otf|ttc)$/i.test(fileName)
 }
 
 export function AdminUploadSettingsForm({
@@ -137,6 +154,9 @@ export function AdminUploadSettingsForm({
   const normalizedAttachmentMaxFileSizeMb = Number.isFinite(initialSettings.attachmentMaxFileSizeMb) && initialSettings.attachmentMaxFileSizeMb > 0
     ? initialSettings.attachmentMaxFileSizeMb
     : 20
+  const normalizedInitialWatermarkFontAssets = Array.isArray(initialSettings.imageWatermarkFontAssets)
+    ? initialSettings.imageWatermarkFontAssets
+    : []
   const [uploadProvider, setUploadProvider] = useState(initialSettings.uploadProvider)
   const [uploadLocalPath, setUploadLocalPath] = useState(initialSettings.uploadLocalPath)
   const [uploadBaseUrl, setUploadBaseUrl] = useState(initialSettings.uploadBaseUrl ?? "")
@@ -152,18 +172,24 @@ export function AdminUploadSettingsForm({
   const [uploadAvatarMaxFileSizeMb, setUploadAvatarMaxFileSizeMb] = useState(String(initialSettings.uploadAvatarMaxFileSizeMb))
   const [markdownImageUploadEnabled, setMarkdownImageUploadEnabled] = useState(initialSettings.markdownImageUploadEnabled)
   const [imageWatermarkEnabled, setImageWatermarkEnabled] = useState(Boolean(initialSettings.imageWatermarkEnabled))
+  const [imageWatermarkTextEnabled, setImageWatermarkTextEnabled] = useState(Boolean(initialSettings.imageWatermarkTextEnabled))
   const [imageWatermarkText, setImageWatermarkText] = useState(initialSettings.imageWatermarkText ?? "")
-  const [imageWatermarkPosition, setImageWatermarkPosition] = useState<ImageWatermarkPosition>(initialSettings.imageWatermarkPosition ?? "BOTTOM_RIGHT")
-  const [imageWatermarkTiled, setImageWatermarkTiled] = useState(Boolean(initialSettings.imageWatermarkTiled))
-  const [imageWatermarkOpacity, setImageWatermarkOpacity] = useState(String(initialSettings.imageWatermarkOpacity ?? 22))
-  const [imageWatermarkFontSize, setImageWatermarkFontSize] = useState(String(initialSettings.imageWatermarkFontSize ?? 24))
-  const [imageWatermarkFontFamily, setImageWatermarkFontFamily] = useState(initialSettings.imageWatermarkFontFamily ?? "")
-  const [imageWatermarkFontPresetKey, setImageWatermarkFontPresetKey] = useState<WatermarkFontPresetKey>(() => resolveWatermarkFontPresetKey(initialSettings.imageWatermarkFontFamily ?? ""))
-  const [customImageWatermarkFontFamily, setCustomImageWatermarkFontFamily] = useState(() => resolveWatermarkFontPresetKey(initialSettings.imageWatermarkFontFamily ?? "") === "custom" ? (initialSettings.imageWatermarkFontFamily ?? "") : "")
-  const [imageWatermarkMargin, setImageWatermarkMargin] = useState(String(initialSettings.imageWatermarkMargin ?? 24))
-  const [imageWatermarkColor, setImageWatermarkColor] = useState(initialSettings.imageWatermarkColor ?? "#FFFFFF")
+  const [imageWatermarkTextPosition, setImageWatermarkTextPosition] = useState<ImageWatermarkPosition>(initialSettings.imageWatermarkTextPosition ?? "BOTTOM_RIGHT")
+  const [imageWatermarkTextTiled, setImageWatermarkTextTiled] = useState(Boolean(initialSettings.imageWatermarkTextTiled))
+  const [imageWatermarkTextOpacity, setImageWatermarkTextOpacity] = useState(String(initialSettings.imageWatermarkTextOpacity ?? 22))
+  const [imageWatermarkTextFontSize, setImageWatermarkTextFontSize] = useState(String(initialSettings.imageWatermarkTextFontSize ?? 24))
+  const [imageWatermarkFontAssets, setImageWatermarkFontAssets] = useState<WatermarkFontAsset[]>(normalizedInitialWatermarkFontAssets)
+  const [imageWatermarkTextFontFamily, setImageWatermarkTextFontFamily] = useState(() => resolveKnownWatermarkFontFamilyForForm(initialSettings.imageWatermarkTextFontFamily ?? "", normalizedInitialWatermarkFontAssets))
+  const [imageWatermarkTextMargin, setImageWatermarkTextMargin] = useState(String(initialSettings.imageWatermarkTextMargin ?? 24))
+  const [imageWatermarkTextColor, setImageWatermarkTextColor] = useState(initialSettings.imageWatermarkTextColor ?? "#FFFFFF")
+  const [imageWatermarkLogoEnabled, setImageWatermarkLogoEnabled] = useState(Boolean(initialSettings.imageWatermarkLogoEnabled))
   const [imageWatermarkLogoPath, setImageWatermarkLogoPath] = useState(initialSettings.imageWatermarkLogoPath ?? "")
+  const [imageWatermarkLogoPosition, setImageWatermarkLogoPosition] = useState<ImageWatermarkPosition>(initialSettings.imageWatermarkLogoPosition ?? "BOTTOM_LEFT")
+  const [imageWatermarkLogoTiled, setImageWatermarkLogoTiled] = useState(Boolean(initialSettings.imageWatermarkLogoTiled))
+  const [imageWatermarkLogoOpacity, setImageWatermarkLogoOpacity] = useState(String(initialSettings.imageWatermarkLogoOpacity ?? 22))
+  const [imageWatermarkLogoMargin, setImageWatermarkLogoMargin] = useState(String(initialSettings.imageWatermarkLogoMargin ?? 24))
   const [imageWatermarkLogoScalePercent, setImageWatermarkLogoScalePercent] = useState(String(initialSettings.imageWatermarkLogoScalePercent ?? 16))
+  const [watermarkFontUploading, setWatermarkFontUploading] = useState(false)
   const [watermarkLogoUploading, setWatermarkLogoUploading] = useState(false)
   const [attachmentUploadEnabled, setAttachmentUploadEnabled] = useState(normalizedAttachmentUploadEnabled)
   const [attachmentDownloadEnabled, setAttachmentDownloadEnabled] = useState(normalizedAttachmentDownloadEnabled)
@@ -176,11 +202,16 @@ export function AdminUploadSettingsForm({
   const resolvedRouteTab = resolveUploadTab(initialSubTab)
   const [localActiveTab, setLocalActiveTab] = useState<UploadSettingsTabKey>(resolvedRouteTab)
   const activeTab = tabRouteSection ? resolvedRouteTab : localActiveTab
-  const normalizedImageWatermarkOpacity = normalizeSliderNumber(imageWatermarkOpacity, initialSettings.imageWatermarkOpacity ?? 22, 0, 100)
-  const normalizedImageWatermarkFontSize = normalizeSliderNumber(imageWatermarkFontSize, initialSettings.imageWatermarkFontSize ?? 24, 8, 160)
-  const normalizedImageWatermarkMargin = normalizeSliderNumber(imageWatermarkMargin, initialSettings.imageWatermarkMargin ?? 24, 0, 200)
+  const normalizedImageWatermarkTextOpacity = normalizeSliderNumber(imageWatermarkTextOpacity, initialSettings.imageWatermarkTextOpacity ?? 22, 0, 100)
+  const normalizedImageWatermarkTextFontSize = normalizeSliderNumber(imageWatermarkTextFontSize, initialSettings.imageWatermarkTextFontSize ?? 24, 8, 160)
+  const normalizedImageWatermarkTextMargin = normalizeSliderNumber(imageWatermarkTextMargin, initialSettings.imageWatermarkTextMargin ?? 24, 0, 200)
+  const normalizedImageWatermarkLogoOpacity = normalizeSliderNumber(imageWatermarkLogoOpacity, initialSettings.imageWatermarkLogoOpacity ?? 22, 0, 100)
+  const normalizedImageWatermarkLogoMargin = normalizeSliderNumber(imageWatermarkLogoMargin, initialSettings.imageWatermarkLogoMargin ?? 24, 0, 200)
   const normalizedImageWatermarkLogoScalePercent = normalizeSliderNumber(imageWatermarkLogoScalePercent, initialSettings.imageWatermarkLogoScalePercent ?? 16, 1, 60)
-  const isCustomWatermarkFontFamily = imageWatermarkFontPresetKey === "custom"
+  const availableWatermarkFonts = getAvailableWatermarkFontAssets(imageWatermarkFontAssets)
+  const selectedImageWatermarkTextFontFamily = availableWatermarkFonts.some((asset) => asset.fontFamily === imageWatermarkTextFontFamily)
+    ? imageWatermarkTextFontFamily
+    : resolveDefaultWatermarkFontFamily()
   const useRemoteStorage = uploadProvider === "s3"
   const currentTabSaveLabel = activeTab === "storage"
     ? "保存上传配置"
@@ -209,6 +240,29 @@ export function AdminUploadSettingsForm({
     }
   }
 
+  async function handleWatermarkFontUpload(file: File) {
+    if (!isWatermarkFontFileName(file.name)) {
+      setFeedback("请先选择 TTF / OTF / TTC 字体文件")
+      return
+    }
+
+    setFeedback("")
+    setWatermarkFontUploading(true)
+
+    try {
+      const result = await uploadAdminWatermarkFontFile(file)
+      setFeedback(result.message)
+
+      if (result.ok) {
+        setImageWatermarkFontAssets((currentAssets) => mergeWatermarkFontAssets(currentAssets, result.data.asset))
+        setImageWatermarkTextFontFamily(result.data.asset.fontFamily)
+        router.refresh()
+      }
+    } finally {
+      setWatermarkFontUploading(false)
+    }
+  }
+
   return (
     <form
       className="space-y-4"
@@ -232,15 +286,22 @@ export function AdminUploadSettingsForm({
             uploadAvatarMaxFileSizeMb: Number(uploadAvatarMaxFileSizeMb),
             markdownImageUploadEnabled,
             imageWatermarkEnabled,
+            imageWatermarkTextEnabled,
             imageWatermarkText,
-            imageWatermarkPosition,
-            imageWatermarkTiled,
-            imageWatermarkOpacity: normalizedImageWatermarkOpacity,
-            imageWatermarkFontSize: normalizedImageWatermarkFontSize,
-            imageWatermarkFontFamily,
-            imageWatermarkMargin: normalizedImageWatermarkMargin,
-            imageWatermarkColor,
+            imageWatermarkTextPosition,
+            imageWatermarkTextTiled,
+            imageWatermarkTextOpacity: normalizedImageWatermarkTextOpacity,
+            imageWatermarkTextFontSize: normalizedImageWatermarkTextFontSize,
+            imageWatermarkTextFontFamily: selectedImageWatermarkTextFontFamily,
+            imageWatermarkFontAssets,
+            imageWatermarkTextMargin: normalizedImageWatermarkTextMargin,
+            imageWatermarkTextColor,
+            imageWatermarkLogoEnabled,
             imageWatermarkLogoPath,
+            imageWatermarkLogoPosition,
+            imageWatermarkLogoTiled,
+            imageWatermarkLogoOpacity: normalizedImageWatermarkLogoOpacity,
+            imageWatermarkLogoMargin: normalizedImageWatermarkLogoMargin,
             imageWatermarkLogoScalePercent: normalizedImageWatermarkLogoScalePercent,
             attachmentUploadEnabled,
             attachmentDownloadEnabled,
@@ -302,123 +363,146 @@ export function AdminUploadSettingsForm({
         ) : null}
 
         {activeTab === "watermark" ? (
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <SettingsToggleField label="启用图片水印" checked={imageWatermarkEnabled} onChange={setImageWatermarkEnabled} description="开启后会在服务端保存前写入文字或图片水印，远程存储也会先处理图片后再上传。" />
-              <SettingsInputField label="水印文字" value={imageWatermarkText} onChange={setImageWatermarkText} placeholder="如 @站点名称 / 禁止转载" />
-              <WatermarkLogoUploadField
-                value={imageWatermarkLogoPath}
-                uploading={watermarkLogoUploading}
-                onValueChange={setImageWatermarkLogoPath}
-                onUpload={handleWatermarkLogoUpload}
-                onClear={() => setImageWatermarkLogoPath("")}
-              />
-              <SettingsSelectField
-                label="水印位置"
-                value={imageWatermarkPosition}
-                onChange={(value) => setImageWatermarkPosition(value as ImageWatermarkPosition)}
-                description="单点水印决定角落位置；铺满模式下则作为平铺纹理的起始偏移锚点。"
-                options={[
-                  { value: "TOP_LEFT", label: "左上角" },
-                  { value: "TOP_RIGHT", label: "右上角" },
-                  { value: "BOTTOM_LEFT", label: "左下角" },
-                  { value: "BOTTOM_RIGHT", label: "右下角" },
-                  { value: "CENTER", label: "居中" },
-                ]}
-              />
-              <SettingsToggleField label="铺满整张图片" checked={imageWatermarkTiled} onChange={setImageWatermarkTiled} description="开启后会以倾斜网格重复铺设整张图，边距会被当作平铺间距使用。" />
-              <SettingsSelectField
-                label="字体预设"
-                value={imageWatermarkFontPresetKey}
-                onChange={(value) => {
-                  const nextKey = value as WatermarkFontPresetKey
-                  setImageWatermarkFontPresetKey(nextKey)
+              <SettingsToggleField label="启用水印处理" checked={imageWatermarkEnabled} onChange={setImageWatermarkEnabled} description="开启后会在服务端保存前写入已启用的文字或图片水印，远程存储也会先处理图片后再上传。" className="md:col-span-2 xl:col-span-3" />
 
-                  if (nextKey === "custom") {
-                    setImageWatermarkFontFamily(customImageWatermarkFontFamily)
-                    return
-                  }
+              <div className="flex flex-col gap-4 border-t border-border pt-4 md:col-span-2 xl:col-span-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold">文字水印</h4>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">文字水印拥有独立的位置、平铺、透明度、字号、颜色和边距。</p>
+                  </div>
+                  <SettingsToggleField label="启用文字水印" checked={imageWatermarkTextEnabled} onChange={setImageWatermarkTextEnabled} className="min-w-48" />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <SettingsInputField label="水印文字" value={imageWatermarkText} onChange={setImageWatermarkText} placeholder="如 @站点名称 / 禁止转载" />
+                  <SettingsSelectField
+                    label="文字位置"
+                    value={imageWatermarkTextPosition}
+                    onChange={(value) => setImageWatermarkTextPosition(value as ImageWatermarkPosition)}
+                    description="单点文字决定角落位置；铺满模式下作为平铺纹理的起始偏移锚点。"
+                    options={WATERMARK_POSITION_OPTIONS}
+                  />
+                  <SettingsToggleField label="文字铺满整张图片" checked={imageWatermarkTextTiled} onChange={setImageWatermarkTextTiled} description="开启后文字会以倾斜网格重复铺设，文字边距会被当作平铺间距使用。" />
+                  <WatermarkFontPicker
+                    fonts={availableWatermarkFonts}
+                    customFonts={imageWatermarkFontAssets}
+                    value={selectedImageWatermarkTextFontFamily}
+                    uploading={watermarkFontUploading}
+                    onValueChange={setImageWatermarkTextFontFamily}
+                    onUpload={handleWatermarkFontUpload}
+                  />
+                  <ColorPicker
+                    label="文字颜色"
+                    value={imageWatermarkTextColor}
+                    onChange={setImageWatermarkTextColor}
+                    presets={WATERMARK_COLOR_PRESETS}
+                    fallbackColor="#FFFFFF"
+                    placeholder="#FFFFFF"
+                    popoverTitle="选择文字颜色"
+                  />
+                  <WatermarkSliderField
+                    label="文字透明度"
+                    value={normalizedImageWatermarkTextOpacity}
+                    min={0}
+                    max={100}
+                    suffix="%"
+                    onChange={(nextValue) => setImageWatermarkTextOpacity(String(nextValue))}
+                    description="数值越低越隐蔽，数值越高越醒目。"
+                  />
+                  <WatermarkSliderField
+                    label="文字字号"
+                    value={normalizedImageWatermarkTextFontSize}
+                    min={8}
+                    max={160}
+                    suffix="px"
+                    onChange={(nextValue) => setImageWatermarkTextFontSize(String(nextValue))}
+                    description="服务端会按这个字号测量、换行并绘制水印文本。"
+                  />
+                  <WatermarkSliderField
+                    label="文字边距 / 间距"
+                    value={normalizedImageWatermarkTextMargin}
+                    min={0}
+                    max={200}
+                    suffix="px"
+                    onChange={(nextValue) => setImageWatermarkTextMargin(String(nextValue))}
+                    description="单点模式表示离边缘的距离，铺满模式表示相邻文字之间的间距。"
+                  />
+                </div>
+              </div>
 
-                  const preset = WATERMARK_FONT_PRESETS.find((item) => item.key === nextKey)
-                  setImageWatermarkFontFamily(preset?.value ?? "")
-                }}
-                options={[
-                  ...WATERMARK_FONT_PRESETS.map((preset) => ({ value: preset.key, label: preset.label })),
-                  { value: "custom", label: "自定义字体栈" },
-                ]}
-                description="先从常用中文字体里挑一个；如果部署环境有自己的字体，再切到自定义输入完整 font-family。"
-              />
-              {isCustomWatermarkFontFamily ? (
-                <SettingsInputField
-                  label="自定义字体族"
-                  value={imageWatermarkFontFamily}
-                  onChange={(value) => {
-                    setImageWatermarkFontPresetKey("custom")
-                    setCustomImageWatermarkFontFamily(value)
-                    setImageWatermarkFontFamily(value)
-                  }}
-                  placeholder={'如 "Microsoft YaHei", "PingFang SC", sans-serif'}
-                  description="填写完整 CSS font-family 栈。留空时会回退到默认内置字体链。"
-                  className="md:col-span-2 xl:col-span-2"
-                />
-              ) : null}
-              <ColorPicker
-                label="文字颜色"
-                value={imageWatermarkColor}
-                onChange={setImageWatermarkColor}
-                presets={WATERMARK_COLOR_PRESETS}
-                fallbackColor="#FFFFFF"
-                placeholder="#FFFFFF"
-                popoverTitle="选择文字颜色"
-              />
-              <WatermarkSliderField
-                label="透明度"
-                value={normalizedImageWatermarkOpacity}
-                min={0}
-                max={100}
-                suffix="%"
-                onChange={(nextValue) => setImageWatermarkOpacity(String(nextValue))}
-                description="数值越低越隐蔽，数值越高越醒目。"
-              />
-              <WatermarkSliderField
-                label="字号"
-                value={normalizedImageWatermarkFontSize}
-                min={8}
-                max={160}
-                suffix="px"
-                onChange={(nextValue) => setImageWatermarkFontSize(String(nextValue))}
-                description="服务端会按这个字号测量、换行并绘制水印文本。"
-              />
-              <WatermarkSliderField
-                label="边距 / 间距"
-                value={normalizedImageWatermarkMargin}
-                min={0}
-                max={200}
-                suffix="px"
-                onChange={(nextValue) => setImageWatermarkMargin(String(nextValue))}
-                description="单点模式表示离边缘的距离，铺满模式表示相邻水印之间的间距。"
-              />
-              <WatermarkSliderField
-                label="图片水印宽度"
-                value={normalizedImageWatermarkLogoScalePercent}
-                min={1}
-                max={60}
-                suffix="%"
-                onChange={(nextValue) => setImageWatermarkLogoScalePercent(String(nextValue))}
-                description="按原图宽度比例缩放水印图片，高度会按图片自身比例自动计算。"
-              />
+              <div className="flex flex-col gap-4 border-t border-border pt-4 md:col-span-2 xl:col-span-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold">图片水印</h4>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">图片水印拥有独立的位置、平铺、透明度、尺寸和边距。</p>
+                  </div>
+                  <SettingsToggleField label="启用图片水印" checked={imageWatermarkLogoEnabled} onChange={setImageWatermarkLogoEnabled} className="min-w-48" />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <WatermarkLogoUploadField
+                    value={imageWatermarkLogoPath}
+                    uploading={watermarkLogoUploading}
+                    onValueChange={setImageWatermarkLogoPath}
+                    onUpload={handleWatermarkLogoUpload}
+                    onClear={() => setImageWatermarkLogoPath("")}
+                  />
+                  <SettingsSelectField
+                    label="图片位置"
+                    value={imageWatermarkLogoPosition}
+                    onChange={(value) => setImageWatermarkLogoPosition(value as ImageWatermarkPosition)}
+                    description="单点图片决定角落位置；铺满模式下作为平铺纹理的起始偏移锚点。"
+                    options={WATERMARK_POSITION_OPTIONS}
+                  />
+                  <SettingsToggleField label="图片铺满整张图片" checked={imageWatermarkLogoTiled} onChange={setImageWatermarkLogoTiled} description="开启后图片会以倾斜网格重复铺设，图片边距会被当作平铺间距使用。" />
+                  <WatermarkSliderField
+                    label="图片透明度"
+                    value={normalizedImageWatermarkLogoOpacity}
+                    min={0}
+                    max={100}
+                    suffix="%"
+                    onChange={(nextValue) => setImageWatermarkLogoOpacity(String(nextValue))}
+                    description="单独控制图片水印的显示强度。"
+                  />
+                  <WatermarkSliderField
+                    label="图片边距 / 间距"
+                    value={normalizedImageWatermarkLogoMargin}
+                    min={0}
+                    max={200}
+                    suffix="px"
+                    onChange={(nextValue) => setImageWatermarkLogoMargin(String(nextValue))}
+                    description="单点模式表示离边缘的距离，铺满模式表示相邻图片之间的间距。"
+                  />
+                  <WatermarkSliderField
+                    label="图片水印宽度"
+                    value={normalizedImageWatermarkLogoScalePercent}
+                    min={1}
+                    max={60}
+                    suffix="%"
+                    onChange={(nextValue) => setImageWatermarkLogoScalePercent(String(nextValue))}
+                    description="按原图宽度比例缩放水印图片，高度会按图片自身比例自动计算。"
+                  />
+                </div>
+              </div>
             </div>
             <WatermarkPreview
               enabled={imageWatermarkEnabled}
+              textEnabled={imageWatermarkTextEnabled}
               text={imageWatermarkText}
-              position={imageWatermarkPosition}
-              tiled={imageWatermarkTiled}
-              opacity={normalizedImageWatermarkOpacity}
-              fontSize={normalizedImageWatermarkFontSize}
-              fontFamily={imageWatermarkFontFamily}
-              margin={normalizedImageWatermarkMargin}
-              color={imageWatermarkColor}
+              textPosition={imageWatermarkTextPosition}
+              textTiled={imageWatermarkTextTiled}
+              textOpacity={normalizedImageWatermarkTextOpacity}
+              textFontSize={normalizedImageWatermarkTextFontSize}
+              textFontFamily={selectedImageWatermarkTextFontFamily}
+              textMargin={normalizedImageWatermarkTextMargin}
+              textColor={imageWatermarkTextColor}
+              logoEnabled={imageWatermarkLogoEnabled}
               logoPath={imageWatermarkLogoPath}
+              logoPosition={imageWatermarkLogoPosition}
+              logoTiled={imageWatermarkLogoTiled}
+              logoOpacity={normalizedImageWatermarkLogoOpacity}
+              logoMargin={normalizedImageWatermarkLogoMargin}
               logoScalePercent={normalizedImageWatermarkLogoScalePercent}
             />
           </div>
@@ -465,40 +549,58 @@ const WATERMARK_COLOR_PRESETS = ["#FFFFFF", "#F8FAFC", "#E2E8F0", "#FDE68A", "#F
 
 function WatermarkPreview({
   enabled,
+  textEnabled,
   text,
-  position,
-  tiled,
-  opacity,
-  fontSize,
-  fontFamily,
-  margin,
-  color,
+  textPosition,
+  textTiled,
+  textOpacity,
+  textFontSize,
+  textFontFamily,
+  textMargin,
+  textColor,
+  logoEnabled,
   logoPath,
+  logoPosition,
+  logoTiled,
+  logoOpacity,
+  logoMargin,
   logoScalePercent,
 }: {
   enabled: boolean
+  textEnabled: boolean
   text: string
-  position: ImageWatermarkPosition
-  tiled: boolean
-  opacity: number
-  fontSize: number
-  fontFamily: string
-  margin: number
-  color: string
+  textPosition: ImageWatermarkPosition
+  textTiled: boolean
+  textOpacity: number
+  textFontSize: number
+  textFontFamily: string
+  textMargin: number
+  textColor: string
+  logoEnabled: boolean
   logoPath: string
+  logoPosition: ImageWatermarkPosition
+  logoTiled: boolean
+  logoOpacity: number
+  logoMargin: number
   logoScalePercent: number
 }) {
   const previewQuery = new URLSearchParams({
     enabled: enabled ? "1" : "0",
+    textEnabled: textEnabled ? "1" : "0",
     text,
-    position,
-    tiled: tiled ? "1" : "0",
-    opacity: String(opacity),
-    fontSize: String(fontSize),
-    fontFamily,
-    margin: String(margin),
-    color: normalizeHexColor(color || "#FFFFFF", "#FFFFFF"),
+    textPosition,
+    textTiled: textTiled ? "1" : "0",
+    textOpacity: String(textOpacity),
+    textFontSize: String(textFontSize),
+    textFontFamily,
+    textMargin: String(textMargin),
+    textColor: normalizeHexColor(textColor || "#FFFFFF", "#FFFFFF"),
+    logoEnabled: logoEnabled ? "1" : "0",
     logoPath,
+    logoPosition,
+    logoTiled: logoTiled ? "1" : "0",
+    logoOpacity: String(logoOpacity),
+    logoMargin: String(logoMargin),
     logoScalePercent: String(logoScalePercent),
   }).toString()
   const previewUrl = useDeferredValue(`/api/admin/site-settings/watermark-preview?${previewQuery}`)
@@ -526,6 +628,66 @@ function WatermarkPreview({
           </div>
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function WatermarkFontPicker({
+  fonts,
+  customFonts,
+  value,
+  uploading,
+  onValueChange,
+  onUpload,
+}: {
+  fonts: WatermarkFontAsset[]
+  customFonts: WatermarkFontAsset[]
+  value: string
+  uploading: boolean
+  onValueChange: (value: string) => void
+  onUpload: (file: File) => void | Promise<void>
+}) {
+  return (
+    <div className="flex flex-col gap-2 md:col-span-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium">水印字体</span>
+        <Button type="button" variant="outline" size="sm" disabled={uploading} nativeButton={false} render={(buttonProps) => (
+          <label {...buttonProps} className={`${buttonProps.className ?? ""} cursor-pointer`}>
+            <Upload data-icon="inline-start" />
+            {uploading ? "上传中..." : "上传字体"}
+            <input
+              type="file"
+              accept=".ttf,.otf,.ttc,font/ttf,font/otf,application/x-font-ttf,application/x-font-otf"
+              className="hidden"
+              disabled={uploading}
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) {
+                  void onUpload(file)
+                }
+                event.target.value = ""
+              }}
+            />
+          </label>
+        )} />
+      </div>
+      <SettingsSelectField
+        label="选择字体"
+        value={value}
+        onChange={onValueChange}
+        options={fonts.map((asset) => ({ value: asset.fontFamily, label: asset.label }))}
+        description="默认仅提供芝芒行书；新增字体需要先上传 TTF、OTF 或 TTC 文件。"
+      />
+      {customFonts.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {customFonts.map((asset) => (
+            <span key={asset.id} className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+              <Type data-icon="inline-start" />
+              <span className="truncate">{asset.label}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

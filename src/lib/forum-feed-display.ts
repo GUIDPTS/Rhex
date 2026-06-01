@@ -26,6 +26,7 @@ export interface FeedDisplayItem {
   boardIcon: string
   authorName: string
   authorUsername: string
+  authorPublicUid?: string | null
   authorAvatarPath: string | null
   authorStatus?: ForumFeedItem["authorStatus"]
   authorIsVip: boolean
@@ -109,6 +110,7 @@ export function mapForumFeedItemsToDisplayItems(
       boardIcon: item.boardIcon,
       authorName: item.authorName,
       authorUsername: item.authorUsername,
+      authorPublicUid: item.authorPublicUid,
       authorAvatarPath: item.authorAvatarPath,
       authorStatus: item.authorStatus,
       authorIsVip,

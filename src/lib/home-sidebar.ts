@@ -4,13 +4,17 @@ import { executeAddonAsyncWaterfallHook } from "@/addons-host/runtime/hooks"
 import type { SidebarUserCardData } from "@/components/user/sidebar-user-card"
 import { findHomeSidebarHotTopics } from "@/db/home-sidebar-queries"
 import type { getCurrentUser } from "@/lib/auth"
+import { getDisplayedBadgesForUser } from "@/lib/badges"
 import { HOME_SIDEBAR_HOT_TOPICS_CACHE_TAG } from "@/lib/content-list-cache"
 import { applyAnonymousIdentityToPost, getAnonymousMaskDisplayIdentity } from "@/lib/post-anonymous"
 import { formatMonthDayTime } from "@/lib/formatters"
 import { getLevelBadgeData } from "@/lib/level-badge"
 import type { SiteSettingsData } from "@/lib/site-settings"
 import { resolveUserSurfaceSnapshot, type UserSurfaceSnapshot } from "@/lib/user-surface"
-import { applyHookedUserPresentationToHomeSidebarItems } from "@/lib/user-presentation-server"
+import {
+  applyHookedUserPresentationToHomeSidebarItems,
+  applyHookedUserPresentationToNamedItem,
+} from "@/lib/user-presentation-server"
 import { getUserDisplayName } from "@/lib/users"
 import { getVipLevel, isVipActive } from "@/lib/vip-status"
 
@@ -84,20 +88,40 @@ export async function buildSidebarUser(user: SidebarUserSource, snapshot: UserSu
         : settings.checkInVip1RewardText
     : settings.checkInRewardText
   const level = Math.max(1, user.level ?? 1)
-  const levelBadge = await getLevelBadgeData(level)
-
-  return {
+  const [levelBadge, displayedBadges] = await Promise.all([
+    getLevelBadgeData(level),
+    getDisplayedBadgesForUser(user.id),
+  ])
+  const vipExpiresAt = user.vipExpiresAt?.toString?.() ?? null
+  const presentedUser = await applyHookedUserPresentationToNamedItem({
+    id: user.id,
     username: user.username,
-    nickname: user.nickname,
+    displayName: getUserDisplayName(user),
     avatarPath: user.avatarPath,
-    role: user.role ?? "USER",
-    status: user.status ?? "ACTIVE",
+    role: user.role,
+    status: user.status,
     level,
     levelName: levelBadge.name,
     levelColor: levelBadge.color,
     levelIcon: levelBadge.icon,
+    vipLevel: user.vipLevel,
+    displayedBadges,
+  })
+
+  return {
+    username: user.username,
+    nickname: user.nickname,
+    displayName: presentedUser.displayName,
+    avatarPath: presentedUser.avatarPath,
+    role: user.role ?? "USER",
+    status: user.status ?? "ACTIVE",
+    roleBadge: presentedUser.roleBadge,
+    level: presentedUser.level ?? level,
+    levelName: presentedUser.levelName ?? undefined,
+    levelColor: presentedUser.levelColor ?? undefined,
+    levelIcon: presentedUser.levelIcon ?? undefined,
     vipLevel: user.vipLevel ?? 0,
-    vipExpiresAt: user.vipExpiresAt?.toString?.() ?? null,
+    vipExpiresAt,
     boardCount: snapshot?.boardCount ?? 0,
     favoriteCount: snapshot?.favoriteCount ?? 0,
     followerCount: snapshot?.followerCount ?? 0,

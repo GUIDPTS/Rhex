@@ -49,6 +49,7 @@ const commentUserSelect = {
   avatarPath: true,
   role: true,
   status: true,
+  level: true,
   vipLevel: true,
   vipExpiresAt: true,
   userBadges: commentDisplayedBadgesInclude,

@@ -34,7 +34,7 @@ import { buildUserProfileRadarData } from "@/lib/user-profile-radar"
 import { VipDisplayName } from "@/components/vip/vip-display-name"
 import { getAiAgentUserId } from "@/lib/ai-agent"
 import { getCurrentUser } from "@/lib/auth"
-import { getBadgeEligibilitySnapshot, getDisplayedBadgesForUser, getGrantedBadgesForUser } from "@/lib/badges"
+import { getBadgeEligibilitySnapshot, getGrantedBadgesForUser } from "@/lib/badges"
 import { getBoards } from "@/lib/boards"
 import { getPublicFavoriteCollectionsByUsername } from "@/lib/favorite-collections"
 import { isUserFollowingTarget } from "@/lib/follows"
@@ -66,24 +66,38 @@ type ProfileVipBadgeStyle = CSSProperties & Record<`--profile-vip-badge-${string
 const profileNameBadgeClassName = "inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.75 text-[10px] font-semibold leading-none backdrop-blur-sm sm:gap-1 sm:px-2.5 sm:py-1 sm:text-[11px]"
 const profileVipBadgeClassName = `${profileNameBadgeClassName} border-[color:var(--profile-vip-badge-border)] bg-[image:var(--profile-vip-badge-background)] text-[color:var(--profile-vip-badge-foreground)] shadow-[var(--profile-vip-badge-shadow)] dark:border-[color:var(--profile-vip-badge-border-dark)] dark:bg-[image:var(--profile-vip-badge-background-dark)] dark:text-[color:var(--profile-vip-badge-foreground-dark)] dark:shadow-[var(--profile-vip-badge-shadow-dark)]`
 
-function getProfileRoleBadgeConfig(role: "USER" | "MODERATOR" | "ADMIN" | null) {
-  if (role === "ADMIN") {
+function getProfileRoleBadgeConfig(input: { key?: string | null; label: string; tone?: string | null } | null | undefined, fallbackRole: "USER" | "MODERATOR" | "ADMIN" | null) {
+  if (input === null) {
+    return null
+  }
+
+  const key = input?.key
+  const tone = input?.tone
+  const label = input?.label
+
+  if (key === "admin" || tone === "danger" || (input === undefined && fallbackRole === "ADMIN")) {
     return {
-      label: "管理员",
+      label: label ?? "管理员",
       icon: <Crown className="h-3.5 w-3.5" />,
       className: "border-red-200/80 bg-linear-to-b from-red-50 to-red-100/70 text-red-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-red-500/25 dark:from-red-500/18 dark:to-red-500/8 dark:text-red-200 dark:shadow-none",
     }
   }
 
-  if (role === "MODERATOR") {
+  if (key === "moderator" || tone === "sky" || (input === undefined && fallbackRole === "MODERATOR")) {
     return {
-      label: "版主",
+      label: label ?? "版主",
       icon: <ShieldCheck className="h-3.5 w-3.5" />,
       className: "border-sky-200/80 bg-linear-to-b from-sky-50 to-sky-100/70 text-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-sky-500/25 dark:from-sky-500/18 dark:to-sky-500/8 dark:text-sky-200 dark:shadow-none",
     }
   }
 
-  return null
+  return input
+    ? {
+        label: input.label,
+        icon: null,
+        className: "border-border bg-secondary text-muted-foreground dark:bg-white/6 dark:text-slate-300",
+      }
+    : null
 }
 
 function getProfileVipBadgeStyle(level: number): ProfileVipBadgeStyle {
@@ -218,7 +232,7 @@ export default async function UserPage(props: PageProps<"/users/[username]">) {
   const canViewIntroduction = canViewUserProfileVisibility(user.introductionVisibility, visibilityContext)
   const introduction = user.introduction.trim()
 
-  const [postsPageData, recentRepliesPageData, activeBoards, publicCollections, badgeItems, displayedBadgeItems, radarSnapshot, isFollowingUser] = await Promise.all([
+  const [postsPageData, recentRepliesPageData, activeBoards, publicCollections, badgeItems, radarSnapshot, isFollowingUser] = await Promise.all([
     canViewRecentActivity
       ? getUserPostsPage(params.username, { page: postsPage })
       : Promise.resolve({
@@ -250,7 +264,6 @@ export default async function UserPage(props: PageProps<"/users/[username]">) {
       : Promise.resolve([]),
     getPublicFavoriteCollectionsByUsername(params.username, { page: 1 }),
     getGrantedBadgesForUser(user.id),
-    getDisplayedBadgesForUser(user.id),
     getBadgeEligibilitySnapshot(user.id),
     currentUser && currentUser.id !== user.id && !profileAccess.relation.isBlocked
       ? isUserFollowingTarget({
@@ -330,26 +343,16 @@ export default async function UserPage(props: PageProps<"/users/[username]">) {
       </div>
     )
     : null
-  const roleBadge = getProfileRoleBadgeConfig(user.role)
+  const roleBadge = getProfileRoleBadgeConfig(user.roleBadge, user.role)
   const joinedAtText = serializeDate(user.createdAt) ?? user.createdAt
   const levelMetaText = user.levelName ? `Lv.${user.level} ${user.levelName}` : `Lv.${user.level}`
   const ipLocationLabel = settings.userProfileIpLocationEnabled
     ? resolveIpLocationLabel(user.lastLoginIp)
     : null
-
-  const identityTags = [
-    user.role === "ADMIN" ? { label: "管理员", tone: "danger" as const } : null,
-    user.role === "MODERATOR" ? { label: "版主", tone: "sky" as const } : null,
-    user.status === "BANNED" ? { label: "账号封禁中", tone: "danger" as const } : null,
-    user.status === "MUTED" ? { label: "账号禁言中", tone: "warning" as const } : null,
-    vipActive ? { label: `VIP${vipLevel}`, tone: "vip" as const } : null,
-    user.levelName ? { label: user.levelName, tone: "level" as const } : null,
-    user.inviteCount > 0 ? { label: "邀请达人", tone: "orange" as const } : null,
-    user.likeReceivedCount >= 50 ? { label: "高赞用户", tone: "level" as const } : null,
-    user.postCount >= 10 ? { label: "活跃创作者", tone: "sky" as const } : null,
-  ].filter(Boolean) as Array<{ label: string; tone: "plain" | "vip" | "level" | "orange" | "sky" | "danger" | "warning" }>
+  const identityTags = user.identityTags ?? []
 
   const hasIdentityIcons = Boolean(user.verification || isAnonymousMaskUser || isAiAgentUser || restrictionLabel)
+  const displayedBadgeItems = user.displayedBadges ?? []
   const hasDisplayedBadges = displayedBadgeItems.length > 0
   const identityRow = hasIdentityIcons || hasDisplayedBadges
     ? (
@@ -626,8 +629,9 @@ export default async function UserPage(props: PageProps<"/users/[username]">) {
                         <div className="flex flex-wrap gap-2">
                           {identityTags.map((tag) => (
                             <span
-                              key={tag.label}
-                              className={identityTagClassNames[tag.tone]}
+                              key={tag.key}
+                              className={identityTagClassNames[tag.tone ?? "plain"]}
+                              title={tag.tooltip ?? undefined}
                             >
                               {tag.label}
                             </span>

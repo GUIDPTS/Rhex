@@ -82,7 +82,7 @@ export type PrivateReplyRecipient = {
   id: number
   username: string
   displayName: string
-  role?: "USER" | "MODERATOR" | "ADMIN"
+  roleLabel?: string | null
   isPostAuthor?: boolean
 }
 

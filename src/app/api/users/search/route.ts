@@ -2,6 +2,8 @@ import { UserRole, UserStatus } from "@/db/types"
 import { prisma } from "@/db/client"
 
 import { apiSuccess, createUserRouteHandler } from "@/lib/api-route"
+import { getPublicUserRoleBadgeLabel } from "@/lib/user-presentation"
+import { applyHookedUserPresentationToNamedItem } from "@/lib/user-presentation-server"
 
 const USER_SEARCH_LIMIT = 20
 
@@ -109,42 +111,59 @@ export const GET = createUserRouteHandler(async ({ request, currentUser }) => {
     usersById.set(user.id, user)
   }
   const users = Array.from(usersById.values())
+  const sortedUsers = users
+    .sort((left, right) => {
+      const leftPostAuthorScore = left.id === postAuthorId ? 0 : 1
+      const rightPostAuthorScore = right.id === postAuthorId ? 0 : 1
+      if (leftPostAuthorScore !== rightPostAuthorScore) {
+        return leftPostAuthorScore - rightPostAuthorScore
+      }
+
+      const leftAdminScore = left.role === UserRole.ADMIN ? 0 : 1
+      const rightAdminScore = right.role === UserRole.ADMIN ? 0 : 1
+      if (leftAdminScore !== rightAdminScore) {
+        return leftAdminScore - rightAdminScore
+      }
+
+      const scoreDelta = getMatchScore(left, query) - getMatchScore(right, query)
+      if (scoreDelta !== 0) {
+        return scoreDelta
+      }
+
+      if (right.level !== left.level) {
+        return right.level - left.level
+      }
+
+      return left.id - right.id
+    })
+    .slice(0, USER_SEARCH_LIMIT)
+  const presentedUsers = await Promise.all(sortedUsers.map((user) => (
+    applyHookedUserPresentationToNamedItem({
+      id: user.id,
+      username: user.username,
+      displayName: buildDisplayName(user),
+      role: user.role,
+      status: UserStatus.ACTIVE,
+      level: user.level,
+    })
+  )))
 
   return apiSuccess({
-    users: users
-      .sort((left, right) => {
-        const leftPostAuthorScore = left.id === postAuthorId ? 0 : 1
-        const rightPostAuthorScore = right.id === postAuthorId ? 0 : 1
-        if (leftPostAuthorScore !== rightPostAuthorScore) {
-          return leftPostAuthorScore - rightPostAuthorScore
-        }
+    users: sortedUsers.map((user, index) => {
+      const presentedUser = presentedUsers[index]
 
-        const leftAdminScore = left.role === UserRole.ADMIN ? 0 : 1
-        const rightAdminScore = right.role === UserRole.ADMIN ? 0 : 1
-        if (leftAdminScore !== rightAdminScore) {
-          return leftAdminScore - rightAdminScore
-        }
-
-        const scoreDelta = getMatchScore(left, query) - getMatchScore(right, query)
-        if (scoreDelta !== 0) {
-          return scoreDelta
-        }
-
-        if (right.level !== left.level) {
-          return right.level - left.level
-        }
-
-        return left.id - right.id
-      })
-      .slice(0, USER_SEARCH_LIMIT)
-      .map((user) => ({
+      return {
         id: user.id,
         username: user.username,
         nickname: user.nickname,
-        displayName: buildDisplayName(user),
-        role: user.role,
+        displayName: presentedUser?.displayName ?? buildDisplayName(user),
+        roleLabel: getPublicUserRoleBadgeLabel({
+          role: user.role,
+          roleBadge: presentedUser?.roleBadge,
+        }),
         isPostAuthor: user.id === postAuthorId,
-      })),
+      }
+    }),
   })
 }, {
   errorMessage: "用户搜索失败",

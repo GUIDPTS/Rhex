@@ -113,12 +113,12 @@ export function AdminProfileSettingsForm({
     <div className="grid gap-4">
       <SettingsSection
         title={"\u4e3b\u9898\u4e0e\u5b57\u53f7\u9884\u8bbe"}
-        description={"\u5355\u72ec\u7ba1\u7406\u524d\u53f0\u4e3b\u9898\u9884\u8bbe\u3001\u9ed8\u8ba4\u4e3b\u9898\u548c\u5b57\u53f7\u6863\u4f4d\u3002"}
+        description={"\u5355\u72ec\u7ba1\u7406\u524d\u53f0\u4e3b\u9898\u9884\u8bbe\u3001\u684c\u9762\u7aef\u548c\u79fb\u52a8\u7aef\u9ed8\u8ba4\u4e3b\u9898\u4e0e\u5b57\u53f7\u6863\u4f4d\u3002"}
         action={<Badge variant="outline">Appearance</Badge>}
       >
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SettingsSelectField
-            label={"\u9ed8\u8ba4\u4e3b\u9898\u9884\u8bbe"}
+            label={"\u684c\u9762\u7aef\u9ed8\u8ba4\u4e3b\u9898\u9884\u8bbe"}
             value={draft.defaultThemePreset}
             onChange={(value) =>
               updateDraftField(
@@ -126,10 +126,10 @@ export function AdminProfileSettingsForm({
                 value as typeof draft.defaultThemePreset,
               )}
             options={themePresetOptions}
-            description={"\u65b0\u8bbf\u5ba2\u548c\u672a\u8bbe\u7f6e\u672c\u5730\u4e3b\u9898\u7684\u7528\u6237\u9ed8\u8ba4\u4f7f\u7528\u8fd9\u4e2a\u9884\u8bbe\u3002"}
+            description={"\u684c\u9762\u7aef\u65b0\u8bbf\u5ba2\u548c\u672a\u8bbe\u7f6e\u672c\u5730\u4e3b\u9898\u7684\u7528\u6237\u9ed8\u8ba4\u4f7f\u7528\u8fd9\u4e2a\u9884\u8bbe\u3002"}
           />
           <SettingsSelectField
-            label={"\u9ed8\u8ba4\u5b57\u53f7\u9884\u8bbe"}
+            label={"\u684c\u9762\u7aef\u9ed8\u8ba4\u5b57\u53f7\u9884\u8bbe"}
             value={draft.defaultFontSizePreset}
             onChange={(value) =>
               updateDraftField(
@@ -137,7 +137,29 @@ export function AdminProfileSettingsForm({
                 value as typeof draft.defaultFontSizePreset,
               )}
             options={fontSizePresetOptions}
-            description={"\u53ef\u5728\u4e0b\u65b9\u81ea\u5b9a\u4e49\u5c0f\u53f7\u3001\u4e2d\u53f7\u3001\u5927\u53f7\u7684\u5177\u4f53 px \u503c\u3002"}
+            description={"\u684c\u9762\u7aef\u672a\u8bbe\u7f6e\u672c\u5730\u5b57\u53f7\u65f6\u4f7f\u7528\uff0c\u4e0b\u65b9\u53ef\u81ea\u5b9a\u4e49\u5404\u6863\u4f4d px \u503c\u3002"}
+          />
+          <SettingsSelectField
+            label={"\u79fb\u52a8\u7aef\u9ed8\u8ba4\u4e3b\u9898\u9884\u8bbe"}
+            value={draft.defaultMobileThemePreset}
+            onChange={(value) =>
+              updateDraftField(
+                "defaultMobileThemePreset",
+                value as typeof draft.defaultMobileThemePreset,
+              )}
+            options={themePresetOptions}
+            description={"\u79fb\u52a8\u7aef\u65b0\u8bbf\u5ba2\u548c\u672a\u8bbe\u7f6e\u672c\u5730\u4e3b\u9898\u7684\u7528\u6237\u4f1a\u9ed8\u8ba4\u4f7f\u7528\u8fd9\u4e2a\u9884\u8bbe\u3002"}
+          />
+          <SettingsSelectField
+            label={"\u79fb\u52a8\u7aef\u9ed8\u8ba4\u5b57\u53f7\u9884\u8bbe"}
+            value={draft.defaultMobileFontSizePreset}
+            onChange={(value) =>
+              updateDraftField(
+                "defaultMobileFontSizePreset",
+                value as typeof draft.defaultMobileFontSizePreset,
+              )}
+            options={fontSizePresetOptions}
+            description={"\u79fb\u52a8\u7aef\u672a\u8bbe\u7f6e\u672c\u5730\u5b57\u53f7\u65f6\u4f7f\u7528\uff0c\u9002\u5408\u5355\u72ec\u8c03\u6574\u5c0f\u5c4f\u9605\u8bfb\u5bc6\u5ea6\u3002"}
           />
         </div>
         <div className="rounded-2xl border border-border bg-muted/20 p-4">

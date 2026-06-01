@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/rbutton"
 import { UserAvatar } from "@/components/user/user-avatar"
 import { buildLoginHrefWithRedirect, getCurrentBrowserAuthRedirectTarget } from "@/lib/auth-redirect"
+import { getPublicUidLabel } from "@/lib/user-presentation"
 import { cn } from "@/lib/utils"
 import { getVipLevel, isVipActive } from "@/lib/vip-status"
 
@@ -76,7 +77,8 @@ function UserMenuContent({
   onLogout: () => Promise<void>
   className?: string
 }) {
-  const userDisplayName = user.nickname ?? user.username
+  const userDisplayName = user.displayName ?? user.nickname ?? user.username
+  const publicUidLabel = getPublicUidLabel(user)
   const resolveSettingsHref = buildSettingsHref ?? ((tab?: UserMenuSettingsTab) => (tab ? `/settings?tab=${tab}` : "/settings"))
 
   return (
@@ -87,7 +89,7 @@ function UserMenuContent({
             <DropdownMenuLabel className="px-2 py-1.5">
               <div className="flex flex-col gap-0.5">
                 <span className="truncate">{userDisplayName}</span>
-                <span className="truncate">UID:{user.id} @{user.username}</span>
+                <span className="truncate">UID:{publicUidLabel} @{user.username}</span>
               </div>
             </DropdownMenuLabel>
           </DropdownMenuGroup>
@@ -209,7 +211,7 @@ export function HeaderUserActions({ user: userOverride, messageEnabled = true }:
   const vipActive = isVipActive(user)
   const vipLevel = getVipLevel(user)
   const canAccessAdmin = Boolean(user.canAccessAdmin)
-  const userDisplayName = user.nickname ?? user.username
+  const userDisplayName = user.displayName ?? user.nickname ?? user.username
 
   return (
     <>

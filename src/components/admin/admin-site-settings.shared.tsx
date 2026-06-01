@@ -194,6 +194,8 @@ export interface AdminBasicSettingsDraft {
   leftSidebarHomeIcon: string
   defaultThemePreset: BuiltInThemePreset
   defaultFontSizePreset: FontSizePreset
+  defaultMobileThemePreset: BuiltInThemePreset
+  defaultMobileFontSizePreset: FontSizePreset
   fontSizePresets: Record<FontSizePreset, FontSizePresetDefinition>
   themePresets: Record<BuiltInThemePreset, EditableThemePresetDefinition>
   postSlugGenerationMode: PostSlugGenerationMode
@@ -432,6 +434,8 @@ export function createAdminBasicSettingsDraft(initialSettings: AdminBasicSetting
     leftSidebarHomeIcon: coerceString(initialSettings.leftSidebarHome?.icon, "🏠"),
     defaultThemePreset: themeCustomization.defaultThemePreset,
     defaultFontSizePreset: themeCustomization.defaultFontSizePreset,
+    defaultMobileThemePreset: themeCustomization.defaultMobileThemePreset,
+    defaultMobileFontSizePreset: themeCustomization.defaultMobileFontSizePreset,
     fontSizePresets: themeCustomization.fontSizePresets,
     themePresets: themeCustomization.themePresets,
     postSlugGenerationMode: initialSettings.postSlugGenerationMode ?? "TITLE_TIMESTAMP",
@@ -603,6 +607,8 @@ export function buildAdminBasicSettingsPayload(draft: AdminBasicSettingsDraft, m
       themeCustomization: {
         defaultThemePreset: draft.defaultThemePreset,
         defaultFontSizePreset: draft.defaultFontSizePreset,
+        defaultMobileThemePreset: draft.defaultMobileThemePreset,
+        defaultMobileFontSizePreset: draft.defaultMobileFontSizePreset,
         fontSizePresets: draft.fontSizePresets,
         themePresets: draft.themePresets,
       },

@@ -59,6 +59,20 @@ interface InstallAddonFromZipInput {
 
 type AddonInstallAction = "install" | "upgrade" | "overwrite"
 
+function normalizeManifestProvidesPreview(manifest: AddonManifest) {
+  return {
+    slots: manifest.provides?.slots ?? [],
+    surfaces: manifest.provides?.surfaces ?? [],
+    pages: manifest.provides?.pages ?? [],
+    adminPages: manifest.provides?.adminPages ?? [],
+    publicApis: manifest.provides?.publicApis ?? [],
+    adminApis: manifest.provides?.adminApis ?? [],
+    backgroundJobs: manifest.provides?.backgroundJobs ?? [],
+    providers: manifest.provides?.providers ?? [],
+    hooks: manifest.provides?.hooks ?? [],
+  }
+}
+
 function normalizeZipEntryName(entryName: string) {
   return entryName
     .replaceAll("\\", "/")
@@ -320,6 +334,7 @@ export async function inspectAddonZip(input: {
         key: permission,
         risk: classifyInstallPermissionRisk(permission),
       })),
+      provides: normalizeManifestProvidesPreview(manifest),
       installAction,
       existingVersion,
       hasExisting: targetExists,
@@ -385,6 +400,20 @@ export async function installAddonFromZip(input: InstallAddonFromZipInput) {
           : `检测到同 ID 插件 ${manifest.id}，请先确认是否覆盖安装`,
       )
     }
+
+    await executeAddonActionHook("addon.installed.before", {
+      addonId: manifest.id,
+      version: manifest.version,
+      installAction,
+      existingVersion,
+      hasExisting: targetExists,
+      replaceExisting: Boolean(input.replaceExisting),
+      enableAfterInstall,
+      originalName: input.originalName ?? null,
+    }, {
+      throwOnError: true,
+      pathname: `/__addons/install/${manifest.id}`,
+    })
 
     const existingAddon = targetExists
       ? await findLoadedAddonById(manifest.id)
@@ -558,6 +587,14 @@ export async function removeInstalledAddon(addonId: string) {
   if (!(await fileExists(resolvedAddonDirectory))) {
     throw new Error("插件目录不存在，无法物理卸载")
   }
+
+  await executeAddonActionHook("addon.uninstalled.before", {
+    addonId,
+    version: addon.manifest.version,
+  }, {
+    throwOnError: true,
+    pathname: `/__addons/uninstall/${addonId}`,
+  })
 
   const uninstallTarget = await importAddonLifecycleTargetFromDirectory(
     resolvedAddonDirectory,

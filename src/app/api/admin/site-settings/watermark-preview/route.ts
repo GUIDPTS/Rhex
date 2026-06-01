@@ -40,21 +40,34 @@ export const GET = createAdminRouteHandler(async ({ request }) => {
   const boundedText = rawText.length > WATERMARK_TEXT_MAX_LENGTH
     ? rawText.slice(0, WATERMARK_TEXT_MAX_LENGTH)
     : rawText
+  const logoPath = searchParams.get("logoPath") ?? ""
   const pngBuffer = await createWatermarkPreviewImageBuffer({
     enabled: parseBoolean(searchParams.get("enabled"), true),
+    textEnabled: parseBoolean(searchParams.get("textEnabled"), true),
     text: boundedText,
-    position: parsePosition(searchParams.get("position"), "BOTTOM_RIGHT"),
-    tiled: parseBoolean(searchParams.get("tiled"), false),
-    opacity: parseNumber(searchParams.get("opacity"), 22),
-    fontSize: parseNumber(searchParams.get("fontSize"), 24),
-    fontFamily: searchParams.get("fontFamily") ?? "",
-    logoBuffer: await resolveWatermarkLogoBuffer({
-      logoPath: searchParams.get("logoPath") ?? "",
-      uploadLocalPath: settings.uploadLocalPath,
-    }),
+    position: parsePosition(searchParams.get("textPosition") ?? searchParams.get("position"), "BOTTOM_RIGHT"),
+    tiled: parseBoolean(searchParams.get("textTiled") ?? searchParams.get("tiled"), false),
+    opacity: parseNumber(searchParams.get("textOpacity") ?? searchParams.get("opacity"), 22),
+    fontAssets: settings.imageWatermarkFontAssets,
+    fontSize: parseNumber(searchParams.get("textFontSize") ?? searchParams.get("fontSize"), 24),
+    fontFamily: searchParams.get("textFontFamily") ?? searchParams.get("fontFamily") ?? "",
+    logo: {
+      enabled: parseBoolean(searchParams.get("logoEnabled"), true),
+      buffer: await resolveWatermarkLogoBuffer({
+        logoPath,
+        uploadLocalPath: settings.uploadLocalPath,
+      }),
+      margin: parseNumber(searchParams.get("logoMargin"), 24),
+      opacity: parseNumber(searchParams.get("logoOpacity"), 22),
+      position: parsePosition(searchParams.get("logoPosition"), "BOTTOM_LEFT"),
+      scalePercent: parseNumber(searchParams.get("logoScalePercent"), 16),
+      tiled: parseBoolean(searchParams.get("logoTiled"), false),
+    },
+    logoBuffer: null,
     logoScalePercent: parseNumber(searchParams.get("logoScalePercent"), 16),
-    margin: parseNumber(searchParams.get("margin"), 24),
-    color: searchParams.get("color") ?? "#FFFFFF",
+    margin: parseNumber(searchParams.get("textMargin") ?? searchParams.get("margin"), 24),
+    color: searchParams.get("textColor") ?? searchParams.get("color") ?? "#FFFFFF",
+    uploadLocalPath: settings.uploadLocalPath,
   })
 
   return new Response(new Uint8Array(pngBuffer), {

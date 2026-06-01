@@ -22,6 +22,14 @@ import { findEditablePostBySlug, findHomepagePosts, findPostDetailBySlug, findPo
 import { recordPostViewCount } from "@/lib/post-view-count-buffer"
 
 import { mapListPost } from "@/lib/post-map"
+import { applyHookedUserPresentationToSitePosts } from "@/lib/user-presentation-server"
+import type {
+  PublicUserDisplayedBadge,
+  PublicUserIdentityTag,
+  PublicUserLevelBadge,
+  PublicUserRoleBadge,
+  PublicUserVerificationBadge,
+} from "@/lib/user-presentation"
 
 
 
@@ -33,7 +41,7 @@ type ListPostBoard = {
   iconPath?: string | null
 }
 
-type ListPostAuthor = Pick<User, "id" | "username" | "nickname" | "avatarPath" | "status" | "vipLevel" | "vipExpiresAt"> & {
+type ListPostAuthor = Pick<User, "id" | "username" | "nickname" | "avatarPath" | "role" | "status" | "level" | "vipLevel" | "vipExpiresAt"> & {
   userBadges?: Array<{
     id: string
     isDisplayed?: boolean
@@ -108,29 +116,20 @@ export interface SitePostItem {
   isAnonymous?: boolean
   author: string
   authorId?: number
+  authorPublicUid?: string | null
   authorUsername?: string
   authorIsAiAgent?: boolean
   authorAvatarPath?: string | null
+  authorRole?: "USER" | "MODERATOR" | "ADMIN"
   authorStatus?: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
+  authorLevel?: number
   authorIsVip?: boolean
   authorVipLevel?: number
-  authorVerification?: {
-    id: string
-    name: string
-    color: string
-    iconText?: string | null
-    customIconText?: string | null
-    description?: string | null
-    customDescription?: string | null
-  } | null
-  authorDisplayedBadges?: Array<{
-    id: string
-    code?: string | null
-    name: string
-    description?: string | null
-    color: string
-    iconText?: string | null
-  }>
+  authorLevelBadge?: PublicUserLevelBadge | null
+  authorVerification?: PublicUserVerificationBadge | null
+  authorDisplayedBadges?: PublicUserDisplayedBadge[]
+  authorRoleBadge?: PublicUserRoleBadge | null
+  authorIdentityTags?: PublicUserIdentityTag[]
 
   publishedAt: string
   publishedAtRaw?: string
@@ -405,7 +404,9 @@ export async function getHomepagePosts(page = 1, pageSize = 20): Promise<SitePos
       findHomepagePosts(page, pageSize),
       getAnonymousMaskDisplayIdentity(),
     ])
-    return posts.map((post) => mapDatabasePost(post, anonymousMaskIdentity))
+    return applyHookedUserPresentationToSitePosts(
+      posts.map((post) => mapDatabasePost(post, anonymousMaskIdentity)),
+    )
   }, {
     area: "posts",
     action: "getHomepagePosts",
@@ -433,10 +434,12 @@ export async function getPostDetailBySlug(
       return null
     }
 
-    return mapPostDetail(post, currentUserId, {
+    const mappedPost = mapPostDetail(post, currentUserId, {
       ...options,
       anonymousMaskIdentity,
     })
+    const [presentationHookedPost] = await applyHookedUserPresentationToSitePosts([mappedPost])
+    return presentationHookedPost ?? mappedPost
   } catch (error) {
     console.error(error)
     return null

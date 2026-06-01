@@ -8,6 +8,13 @@ import type { AnonymousDisplayIdentity } from "@/lib/post-anonymous"
 import type { PostTipLeaderboardItem } from "@/lib/post-tips"
 import type { PostRewardPoolEffectFeedback } from "@/lib/post-reward-effect-feedback"
 import type { PostRewardPoolMode } from "@/lib/post-reward-pool-config"
+import type {
+  PublicUserDisplayedBadge,
+  PublicUserIdentityTag,
+  PublicUserLevelBadge,
+  PublicUserRoleBadge,
+  PublicUserVerificationBadge,
+} from "@/lib/user-presentation"
 import {
   applyHookedUserPresentationToCommentThreads,
   applyHookedUserPresentationToFlatCommentItems,
@@ -40,29 +47,19 @@ export interface SiteCommentReplyItem {
   authorIsAnonymous?: boolean
   authorIsAiAgent?: boolean
   authorId: number
+  authorPublicUid?: string | null
   authorUsername: string
   authorAvatarPath?: string | null
   authorRole: "USER" | "MODERATOR" | "ADMIN"
   authorStatus: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
+  authorLevel?: number | null
   authorIsVip?: boolean
   authorVipLevel?: number
-  authorVerification?: {
-    id: string
-    name: string
-    color: string
-    iconText?: string | null
-    customIconText?: string | null
-    description?: string | null
-    customDescription?: string | null
-  } | null
-  authorDisplayedBadges?: Array<{
-    id: string
-    code?: string | null
-    name: string
-    description?: string | null
-    color: string
-    iconText?: string | null
-  }>
+  authorLevelBadge?: PublicUserLevelBadge | null
+  authorVerification?: PublicUserVerificationBadge | null
+  authorDisplayedBadges?: PublicUserDisplayedBadge[]
+  authorRoleBadge?: PublicUserRoleBadge | null
+  authorIdentityTags?: PublicUserIdentityTag[]
   isPostAuthor: boolean
   postId: string
   replyToAuthor?: string
@@ -105,29 +102,19 @@ export interface SiteCommentItem {
   authorIsAnonymous?: boolean
   authorIsAiAgent?: boolean
   authorId: number
+  authorPublicUid?: string | null
   authorUsername: string
   authorAvatarPath?: string | null
   authorRole: "USER" | "MODERATOR" | "ADMIN"
   authorStatus: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
+  authorLevel?: number | null
   authorIsVip?: boolean
   authorVipLevel?: number
-  authorVerification?: {
-    id: string
-    name: string
-    color: string
-    iconText?: string | null
-    customIconText?: string | null
-    description?: string | null
-    customDescription?: string | null
-  } | null
-  authorDisplayedBadges?: Array<{
-    id: string
-    code?: string | null
-    name: string
-    description?: string | null
-    color: string
-    iconText?: string | null
-  }>
+  authorLevelBadge?: PublicUserLevelBadge | null
+  authorVerification?: PublicUserVerificationBadge | null
+  authorDisplayedBadges?: PublicUserDisplayedBadge[]
+  authorRoleBadge?: PublicUserRoleBadge | null
+  authorIdentityTags?: PublicUserIdentityTag[]
   isPostAuthor: boolean
   postId: string
   isPrivate?: boolean
@@ -187,6 +174,7 @@ interface CommentQueryUser {
   avatarPath: string | null
   role: "USER" | "MODERATOR" | "ADMIN"
   status: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
+  level: number
   vipLevel: number | null
   vipExpiresAt: Date | null
   userBadges?: Array<{
@@ -237,6 +225,7 @@ function mapDisplayedBadges(user: CommentQueryUser) {
       description: item.badge.description,
       color: item.badge.color,
       iconText: item.badge.iconText,
+      displayOrder: item.displayOrder ?? null,
     }))
 }
 
@@ -264,10 +253,14 @@ function getAnonymousCommentIdentity(identity?: AnonymousDisplayIdentity | null)
     authorAvatarPath: identity?.avatarPath ?? null,
     authorRole: "USER" as const,
     authorStatus: identity?.status ?? "ACTIVE" as const,
+    authorLevel: undefined,
+    authorLevelBadge: null,
     authorIsVip: false,
     authorVipLevel: 0,
     authorVerification: null,
     authorDisplayedBadges: [],
+    authorRoleBadge: identity?.authorRoleBadge ?? null,
+    authorIdentityTags: identity?.authorIdentityTags ?? [],
   }
 }
 
@@ -423,10 +416,14 @@ export async function getCommentsByPostId(
         authorAvatarPath: displayAsAnonymous ? anonymousCommentIdentity.authorAvatarPath : comment.user.avatarPath,
         authorRole: displayAsAnonymous ? anonymousCommentIdentity.authorRole : comment.user.role,
         authorStatus: displayAsAnonymous ? anonymousCommentIdentity.authorStatus : comment.user.status,
+        authorLevel: displayAsAnonymous ? anonymousCommentIdentity.authorLevel : comment.user.level,
         authorIsVip: displayAsAnonymous ? anonymousCommentIdentity.authorIsVip : replyVipState.authorIsVip,
         authorVipLevel: displayAsAnonymous ? anonymousCommentIdentity.authorVipLevel : replyVipState.authorVipLevel,
+        authorLevelBadge: displayAsAnonymous ? anonymousCommentIdentity.authorLevelBadge : null,
         authorVerification: displayAsAnonymous ? anonymousCommentIdentity.authorVerification : mapVerification(comment.user),
         authorDisplayedBadges: displayAsAnonymous ? anonymousCommentIdentity.authorDisplayedBadges : mapDisplayedBadges(comment.user),
+        authorRoleBadge: displayAsAnonymous ? anonymousCommentIdentity.authorRoleBadge : null,
+        authorIdentityTags: displayAsAnonymous ? anonymousCommentIdentity.authorIdentityTags : [],
         isPostAuthor: isVisiblePostAuthor,
         replyToAuthor,
         isPrivate: Boolean(comment.privateRecipientUserId),
@@ -480,10 +477,14 @@ export async function getCommentsByPostId(
         authorAvatarPath: displayAsAnonymous ? anonymousCommentIdentity.authorAvatarPath : comment.user.avatarPath,
         authorRole: displayAsAnonymous ? anonymousCommentIdentity.authorRole : comment.user.role,
         authorStatus: displayAsAnonymous ? anonymousCommentIdentity.authorStatus : comment.user.status,
+        authorLevel: displayAsAnonymous ? anonymousCommentIdentity.authorLevel : comment.user.level,
         authorIsVip: displayAsAnonymous ? anonymousCommentIdentity.authorIsVip : isVipActive(comment.user),
         authorVipLevel: displayAsAnonymous ? anonymousCommentIdentity.authorVipLevel : getVipLevel(comment.user),
+        authorLevelBadge: displayAsAnonymous ? anonymousCommentIdentity.authorLevelBadge : null,
         authorVerification: displayAsAnonymous ? anonymousCommentIdentity.authorVerification : mapVerification(comment.user),
         authorDisplayedBadges: displayAsAnonymous ? anonymousCommentIdentity.authorDisplayedBadges : mapDisplayedBadges(comment.user),
+        authorRoleBadge: displayAsAnonymous ? anonymousCommentIdentity.authorRoleBadge : null,
+        authorIdentityTags: displayAsAnonymous ? anonymousCommentIdentity.authorIdentityTags : [],
         isPostAuthor: isVisiblePostAuthor,
         isPrivate: Boolean(comment.privateRecipientUserId),
         canViewPrivateContent,

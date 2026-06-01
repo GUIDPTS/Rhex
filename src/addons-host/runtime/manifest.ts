@@ -1,5 +1,11 @@
 import type { AddonManifest } from "@/addons-host/types"
 
+function normalizeOptionalStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : undefined
+}
+
 export function normalizeAddonManifest(input: unknown): AddonManifest {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("addon manifest must be an object")
@@ -37,30 +43,15 @@ export function normalizeAddonManifest(input: unknown): AddonManifest {
     permissions: Array.isArray(record.permissions) ? record.permissions.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : undefined,
     provides: record.provides && typeof record.provides === "object" && !Array.isArray(record.provides)
       ? {
-          slots: Array.isArray((record.provides as Record<string, unknown>).slots)
-            ? ((record.provides as Record<string, unknown>).slots as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-          surfaces: Array.isArray((record.provides as Record<string, unknown>).surfaces)
-            ? ((record.provides as Record<string, unknown>).surfaces as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-          pages: Array.isArray((record.provides as Record<string, unknown>).pages)
-            ? ((record.provides as Record<string, unknown>).pages as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-          adminPages: Array.isArray((record.provides as Record<string, unknown>).adminPages)
-            ? ((record.provides as Record<string, unknown>).adminPages as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-          publicApis: Array.isArray((record.provides as Record<string, unknown>).publicApis)
-            ? ((record.provides as Record<string, unknown>).publicApis as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-          adminApis: Array.isArray((record.provides as Record<string, unknown>).adminApis)
-            ? ((record.provides as Record<string, unknown>).adminApis as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-          backgroundJobs: Array.isArray((record.provides as Record<string, unknown>).backgroundJobs)
-            ? ((record.provides as Record<string, unknown>).backgroundJobs as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
-          providers: Array.isArray((record.provides as Record<string, unknown>).providers)
-            ? ((record.provides as Record<string, unknown>).providers as unknown[]).filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            : undefined,
+          slots: normalizeOptionalStringArray((record.provides as Record<string, unknown>).slots),
+          surfaces: normalizeOptionalStringArray((record.provides as Record<string, unknown>).surfaces),
+          pages: normalizeOptionalStringArray((record.provides as Record<string, unknown>).pages),
+          adminPages: normalizeOptionalStringArray((record.provides as Record<string, unknown>).adminPages),
+          publicApis: normalizeOptionalStringArray((record.provides as Record<string, unknown>).publicApis),
+          adminApis: normalizeOptionalStringArray((record.provides as Record<string, unknown>).adminApis),
+          backgroundJobs: normalizeOptionalStringArray((record.provides as Record<string, unknown>).backgroundJobs),
+          providers: normalizeOptionalStringArray((record.provides as Record<string, unknown>).providers),
+          hooks: normalizeOptionalStringArray((record.provides as Record<string, unknown>).hooks),
         }
       : undefined,
     dependencies: record.dependencies && typeof record.dependencies === "object" && !Array.isArray(record.dependencies)

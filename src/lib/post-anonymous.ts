@@ -3,6 +3,13 @@ import { cache } from "react"
 import { findAnonymousMaskUserById, type AnonymousMaskUserRecord } from "@/db/anonymous-post-queries"
 import { getSiteSettings } from "@/lib/site-settings"
 import { getUserDisplayName } from "@/lib/user-display"
+import type {
+  PublicUserDisplayedBadge,
+  PublicUserIdentityTag,
+  PublicUserLevelBadge,
+  PublicUserRoleBadge,
+  PublicUserVerificationBadge,
+} from "@/lib/user-presentation"
 import { getVipLevel, isVipActive } from "@/lib/vip-status"
 
 export interface AnonymousDisplayIdentity {
@@ -13,23 +20,10 @@ export interface AnonymousDisplayIdentity {
   status: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
   authorIsVip?: boolean
   authorVipLevel?: number
-  authorVerification?: {
-    id: string
-    name: string
-    color: string
-    iconText?: string | null
-    customIconText?: string | null
-    description?: string | null
-    customDescription?: string | null
-  } | null
-  authorDisplayedBadges?: Array<{
-    id: string
-    code?: string | null
-    name: string
-    description?: string | null
-    color: string
-    iconText?: string | null
-  }>
+  authorVerification?: PublicUserVerificationBadge | null
+  authorDisplayedBadges?: PublicUserDisplayedBadge[]
+  authorRoleBadge?: PublicUserRoleBadge | null
+  authorIdentityTags?: PublicUserIdentityTag[]
 }
 
 function mapAnonymousIdentity(user: AnonymousMaskUserRecord): AnonymousDisplayIdentity {
@@ -83,26 +77,16 @@ export function applyAnonymousIdentityToPost<T extends {
   author: string
   authorUsername?: string
   authorAvatarPath?: string | null
+  authorRole?: "USER" | "MODERATOR" | "ADMIN"
   authorStatus?: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
+  authorLevel?: number | null
+  authorLevelBadge?: PublicUserLevelBadge | null
   authorIsVip?: boolean
   authorVipLevel?: number | null
-  authorVerification?: {
-    id: string
-    name: string
-    color: string
-    iconText?: string | null
-    customIconText?: string | null
-    description?: string | null
-    customDescription?: string | null
-  } | null
-  authorDisplayedBadges?: Array<{
-    id: string
-    code?: string | null
-    name: string
-    description?: string | null
-    color: string
-    iconText?: string | null
-  }>
+  authorVerification?: PublicUserVerificationBadge | null
+  authorDisplayedBadges?: PublicUserDisplayedBadge[]
+  authorRoleBadge?: PublicUserRoleBadge | null
+  authorIdentityTags?: PublicUserIdentityTag[]
 }>(post: T, maskIdentity: AnonymousDisplayIdentity | null) {
   if (!post.isAnonymous) {
     return post
@@ -113,11 +97,16 @@ export function applyAnonymousIdentityToPost<T extends {
     author: maskIdentity?.name ?? maskIdentity?.username ?? "匿名用户",
     authorUsername: maskIdentity?.username ?? "anonymous-user",
     authorAvatarPath: maskIdentity?.avatarPath ?? null,
+    authorRole: "USER" as const,
     authorStatus: maskIdentity?.status ?? "ACTIVE",
+    authorLevel: undefined,
+    authorLevelBadge: null,
     authorIsVip: maskIdentity?.authorIsVip ?? false,
     authorVipLevel: maskIdentity?.authorVipLevel ?? 0,
     authorVerification: maskIdentity?.authorVerification ?? null,
     authorDisplayedBadges: maskIdentity?.authorDisplayedBadges ?? [],
+    authorRoleBadge: maskIdentity?.authorRoleBadge ?? null,
+    authorIdentityTags: maskIdentity?.authorIdentityTags ?? [],
   }
 }
 

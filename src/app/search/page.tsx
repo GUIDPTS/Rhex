@@ -32,6 +32,7 @@ import {
   type SearchUserItem,
 } from "@/lib/search"
 import { getSiteSettings } from "@/lib/site-settings"
+import { getPublicUserRoleBadgeLabel } from "@/lib/user-presentation"
 import { cn } from "@/lib/utils"
 
 const POST_SEARCH_PAGE_SIZE = 10
@@ -385,25 +386,30 @@ function TagSearchResults({ items }: { items: SearchTagItem[] }) {
 function UserSearchResults({ items }: { items: SearchUserItem[] }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {items.map((user) => (
-        <Link key={user.id} href={`/users/${user.username}`} className="group flex min-h-36 gap-3 rounded-xl border border-border bg-background p-4 transition-colors hover:bg-accent/60">
-          <UserAvatar name={user.displayName} avatarPath={user.avatarPath} size="md" isVip={user.vipLevel > 0} vipLevel={user.vipLevel} />
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <p className="truncate text-sm font-semibold text-foreground group-hover:text-accent-foreground">{user.displayName}</p>
-              {user.role !== "USER" ? <Badge variant="secondary">{user.role === "ADMIN" ? "管理员" : "版主"}</Badge> : null}
-              {user.status === "MUTED" ? <Badge variant="outline">禁言中</Badge> : null}
+      {items.map((user) => {
+        const roleBadgeLabel = getPublicUserRoleBadgeLabel(user)
+        const levelLabel = user.levelName ? `Lv.${user.level} ${user.levelName}` : `Lv.${user.level}`
+
+        return (
+          <Link key={user.id} href={`/users/${user.username}`} className="group flex min-h-36 gap-3 rounded-xl border border-border bg-background p-4 transition-colors hover:bg-accent/60">
+            <UserAvatar name={user.displayName} avatarPath={user.avatarPath} size="md" isVip={user.vipLevel > 0} vipLevel={user.vipLevel} />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <p className="truncate text-sm font-semibold text-foreground group-hover:text-accent-foreground">{user.displayName}</p>
+                {roleBadgeLabel ? <Badge variant="secondary">{roleBadgeLabel}</Badge> : null}
+                {user.status === "MUTED" ? <Badge variant="outline">禁言中</Badge> : null}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">@{user.username}</p>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{user.bio}</p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                <span>{formatNumber(user.postCount)} 帖子</span>
+                <span>{formatNumber(user.followerCount)} 粉丝</span>
+                <span>{levelLabel}</span>
+              </div>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">@{user.username}</p>
-            <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">{user.bio}</p>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
-              <span>{formatNumber(user.postCount)} 帖子</span>
-              <span>{formatNumber(user.followerCount)} 粉丝</span>
-              <span>Lv.{user.level}</span>
-            </div>
-          </div>
-        </Link>
-      ))}
+          </Link>
+        )
+      })}
     </div>
   )
 }

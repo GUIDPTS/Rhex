@@ -1,12 +1,13 @@
 import { getCurrentUser } from "@/lib/auth"
-import { getBadgeEligibilitySnapshot, getDisplayedBadgesForUser, type DisplayedUserBadgeItem } from "@/lib/badges"
+import { getBadgeEligibilitySnapshot } from "@/lib/badges"
 import { isUserFollowingTarget } from "@/lib/follows"
-import { formatNumber, serializeDate } from "@/lib/formatters"
+import { serializeDate } from "@/lib/formatters"
 import { buildUserProfileRadarData, type UserProfileRadarData } from "@/lib/user-profile-radar"
 import { canViewUserProfileVisibility } from "@/lib/user-profile-settings"
 import { getUserProfileAccessState } from "@/lib/user-blocks"
 import { getUserProfile, type SiteUserProfile } from "@/lib/users"
 import { getSiteSettings } from "@/lib/site-settings"
+import { getPublicUidLabel } from "@/lib/user-presentation"
 import { getVipLevel, isVipActive } from "@/lib/vip-status"
 
 export interface UserPreviewCardData {
@@ -20,6 +21,7 @@ export interface UserPreviewCardData {
   canViewRecentActivity?: boolean
   user?: {
     id: number
+    publicUid?: string | null
     username: string
     displayName: string
     role: SiteUserProfile["role"]
@@ -37,7 +39,8 @@ export interface UserPreviewCardData {
     postCount: number
     commentCount: number
     verification: SiteUserProfile["verification"]
-    displayedBadges: DisplayedUserBadgeItem[]
+    displayedBadges: NonNullable<SiteUserProfile["displayedBadges"]>
+    roleBadge?: SiteUserProfile["roleBadge"] | null
   }
   follow?: {
     canFollow: boolean
@@ -75,8 +78,7 @@ export async function getUserPreviewCardData(username: string): Promise<UserPrev
     ? canViewUserProfileVisibility(user.activityVisibility, visibilityContext)
     : false
 
-  const [displayedBadges, radarSnapshot, initialFollowed, settings] = await Promise.all([
-    getDisplayedBadgesForUser(user.id),
+  const [radarSnapshot, initialFollowed, settings] = await Promise.all([
     getBadgeEligibilitySnapshot(user.id),
     currentUser && currentUser.id !== user.id && !profileAccess.relation.isBlocked
       ? isUserFollowingTarget({
@@ -101,6 +103,7 @@ export async function getUserPreviewCardData(username: string): Promise<UserPrev
     canViewRecentActivity,
     user: {
       id: user.id,
+      publicUid: user.publicUid,
       username: user.username,
       displayName: user.displayName,
       role: user.role,
@@ -118,7 +121,8 @@ export async function getUserPreviewCardData(username: string): Promise<UserPrev
       postCount: user.postCount,
       commentCount: user.commentCount,
       verification: user.verification,
-      displayedBadges,
+      displayedBadges: user.displayedBadges ?? [],
+      roleBadge: user.roleBadge,
     },
     follow: {
       canFollow: (!currentUser || currentUser.id !== user.id) && !profileAccess.relation.isBlocked,
@@ -144,7 +148,7 @@ export function getPreviewCardAccessSummary(data: UserPreviewCardData) {
 
   const parts = [
     `Lv.${user.level}${user.levelName ? ` ${user.levelName}` : ""}`,
-    `#${formatNumber(user.id)}`,
+    `#${getPublicUidLabel(user)}`,
     user.joinedDateText,
   ]
 

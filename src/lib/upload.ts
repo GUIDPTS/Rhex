@@ -43,7 +43,23 @@ type UploadSettings = Awaited<ReturnType<typeof getServerSiteSettings>>
 type ImageWatermarkConfig = Pick<
   UploadSettings,
   "imageWatermarkEnabled"
+  | "imageWatermarkTextEnabled"
   | "imageWatermarkText"
+  | "imageWatermarkTextPosition"
+  | "imageWatermarkTextTiled"
+  | "imageWatermarkTextOpacity"
+  | "imageWatermarkTextFontSize"
+  | "imageWatermarkTextFontFamily"
+  | "imageWatermarkFontAssets"
+  | "imageWatermarkTextMargin"
+  | "imageWatermarkTextColor"
+  | "imageWatermarkLogoEnabled"
+  | "imageWatermarkLogoPath"
+  | "imageWatermarkLogoPosition"
+  | "imageWatermarkLogoTiled"
+  | "imageWatermarkLogoOpacity"
+  | "imageWatermarkLogoMargin"
+  | "imageWatermarkLogoScalePercent"
   | "imageWatermarkPosition"
   | "imageWatermarkTiled"
   | "imageWatermarkOpacity"
@@ -51,8 +67,6 @@ type ImageWatermarkConfig = Pick<
   | "imageWatermarkFontFamily"
   | "imageWatermarkMargin"
   | "imageWatermarkColor"
-  | "imageWatermarkLogoPath"
-  | "imageWatermarkLogoScalePercent"
 >
 type WatermarkUploadSettings = ImageWatermarkConfig & Pick<
   UploadSettings,
@@ -118,7 +132,10 @@ function shouldApplyImageWatermark(params: {
 }) {
   return Boolean(
     params.settings?.imageWatermarkEnabled
-    && (params.settings.imageWatermarkText.trim() || params.settings.imageWatermarkLogoPath.trim())
+    && (
+      (params.settings.imageWatermarkTextEnabled && params.settings.imageWatermarkText.trim())
+      || (params.settings.imageWatermarkLogoEnabled && params.settings.imageWatermarkLogoPath.trim())
+    )
     && params.folder
     && WATERMARK_APPLICABLE_FOLDERS.has(params.folder)
     && isWatermarkSupportedMimeType(params.detectedMime),
@@ -158,19 +175,30 @@ async function applyImageWatermarkToBuffer(params: {
       buffer: params.buffer,
       mimeType: params.detectedMime,
       settings: {
-        color: params.settings!.imageWatermarkColor,
-        fontSize: params.settings!.imageWatermarkFontSize,
-        fontFamily: params.settings!.imageWatermarkFontFamily,
-        logoBuffer: await resolveWatermarkLogoBuffer({
-          logoPath: params.settings!.imageWatermarkLogoPath,
-          uploadLocalPath: params.settings!.uploadLocalPath,
-        }),
+        color: params.settings!.imageWatermarkTextColor,
+        fontAssets: params.settings!.imageWatermarkFontAssets,
+        fontSize: params.settings!.imageWatermarkTextFontSize,
+        fontFamily: params.settings!.imageWatermarkTextFontFamily,
+        logo: {
+          enabled: params.settings!.imageWatermarkLogoEnabled,
+          buffer: await resolveWatermarkLogoBuffer({
+            logoPath: params.settings!.imageWatermarkLogoPath,
+            uploadLocalPath: params.settings!.uploadLocalPath,
+          }),
+          margin: params.settings!.imageWatermarkLogoMargin,
+          opacity: params.settings!.imageWatermarkLogoOpacity,
+          position: params.settings!.imageWatermarkLogoPosition,
+          scalePercent: params.settings!.imageWatermarkLogoScalePercent,
+          tiled: params.settings!.imageWatermarkLogoTiled,
+        },
         logoScalePercent: params.settings!.imageWatermarkLogoScalePercent,
-        margin: params.settings!.imageWatermarkMargin,
-        opacity: params.settings!.imageWatermarkOpacity,
-        position: params.settings!.imageWatermarkPosition,
+        margin: params.settings!.imageWatermarkTextMargin,
+        opacity: params.settings!.imageWatermarkTextOpacity,
+        position: params.settings!.imageWatermarkTextPosition,
         text: params.settings!.imageWatermarkText,
-        tiled: params.settings!.imageWatermarkTiled,
+        textEnabled: params.settings!.imageWatermarkTextEnabled,
+        tiled: params.settings!.imageWatermarkTextTiled,
+        uploadLocalPath: params.settings!.uploadLocalPath,
       },
     })
   } catch (error) {

@@ -1,5 +1,6 @@
 import { resolvePagination } from "@/db/helpers"
 import { countUserPublicPostsByUsername, countVisibleUserRepliesByUsername, findUserAccountSettingsById, findUserPostsByUsername, findUserProfileByUsername, findUserRepliesByUsername } from "@/db/user-queries"
+import { getDisplayedBadgesForUser } from "@/lib/badges"
 import { getCurrentSessionActor } from "@/lib/auth"
 import { getLevelBadgeData } from "@/lib/level-badge"
 import { getAnonymousMaskDisplayIdentity } from "@/lib/post-anonymous"
@@ -11,6 +12,12 @@ import {
 } from "@/lib/user-presentation-server"
 import { resolveUserProfileSettings } from "@/lib/user-profile-settings"
 import { getUserAvatarPath, getUserDisplayName } from "@/lib/user-display"
+import {
+  buildDefaultPublicUserIdentityTags,
+  type PublicUserDisplayedBadge,
+  type PublicUserIdentityTag,
+  type PublicUserRoleBadge,
+} from "@/lib/user-presentation"
 import { withRuntimeFallback } from "@/lib/runtime-errors"
 
 export type PublicUserStatus = "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
@@ -27,6 +34,7 @@ const USER_PROFILE_ACTIVE_BOARD_MAX_BATCHES = 10
 
 export interface SiteUserProfile {
   id: number
+  publicUid?: string | null
   createdAt: string
   lastLoginIp: string | null
   username: string
@@ -57,6 +65,9 @@ export interface SiteUserProfile {
     description?: string | null
     customDescription?: string | null
   } | null
+  displayedBadges?: PublicUserDisplayedBadge[]
+  roleBadge?: PublicUserRoleBadge | null
+  identityTags?: PublicUserIdentityTag[]
   activityVisibility: UserProfileVisibility
   introductionVisibility: UserProfileVisibility
   postCount: number
@@ -86,9 +97,23 @@ export async function getUserProfile(username: string): Promise<SiteUserProfile 
       return null
     }
 
-    const levelBadge = await getLevelBadgeData(user.level)
+    const [levelBadge, displayedBadges] = await Promise.all([
+      getLevelBadgeData(user.level),
+      getDisplayedBadgesForUser(Number(user.id)),
+    ])
     const approvedVerification = user.verificationApplications?.[0]
     const profileSettings = resolveUserProfileSettings(user.signature)
+    const vipExpiresAt = user.vipExpiresAt?.toISOString() ?? null
+    const defaultIdentityTags = buildDefaultPublicUserIdentityTags({
+      role: user.role,
+      status: user.status,
+      vipLevel: user.vipLevel,
+      vipExpiresAt,
+      levelName: levelBadge.name,
+      inviteCount: user.inviteCount,
+      likeReceivedCount: user.likeReceivedCount,
+      postCount: publicPostCount,
+    })
 
     return applyHookedUserPresentationToNamedItem({
       id: Number(user.id),
@@ -110,7 +135,7 @@ export async function getUserProfile(username: string): Promise<SiteUserProfile 
       levelIcon: levelBadge.icon,
       points: user.points,
       vipLevel: user.vipLevel,
-      vipExpiresAt: user.vipExpiresAt?.toISOString() ?? null,
+      vipExpiresAt,
       inviteCount: user.inviteCount,
       inviterUsername: user.inviter?.username ?? null,
       verification: approvedVerification
@@ -132,7 +157,8 @@ export async function getUserProfile(username: string): Promise<SiteUserProfile 
       followerCount: user._count.followedByUsers,
       favoriteCount: user._count.favorites,
       boardCount: user._count.boardFollows,
-      displayedBadges: [],
+      displayedBadges,
+      identityTags: defaultIdentityTags,
     })
   }, {
     area: "users",

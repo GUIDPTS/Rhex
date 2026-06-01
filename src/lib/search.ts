@@ -17,6 +17,7 @@ import {
 } from "@/db/search-queries"
 import { decodePinnedTimestampCursor, encodePinnedTimestampCursor } from "@/lib/cursor-pagination"
 import { formatNumber } from "@/lib/formatters"
+import { getLevelBadgeData } from "@/lib/level-badge"
 import { getAnonymousMaskDisplayIdentity } from "@/lib/post-anonymous"
 import { getPostPath } from "@/lib/post-links"
 import { getSiteSettings } from "@/lib/site-settings"
@@ -26,6 +27,7 @@ import {
   applyHookedUserPresentationToNamedItem,
   applyHookedUserPresentationToSitePosts,
 } from "@/lib/user-presentation-server"
+import type { PublicUserRoleBadge } from "@/lib/user-presentation"
 import {
   executeAddonActionHook,
   executeAddonAsyncWaterfallHook,
@@ -108,13 +110,18 @@ export interface SearchTagItem {
 
 export interface SearchUserItem {
   id: number
+  publicUid?: string | null
   username: string
   displayName: string
   avatarPath: string | null
   bio: string
   role: "USER" | "MODERATOR" | "ADMIN"
+  roleBadge?: PublicUserRoleBadge | null
   status: "ACTIVE" | "MUTED" | "BANNED" | "INACTIVE"
   level: number
+  levelName?: string | null
+  levelColor?: string | null
+  levelIcon?: string | null
   vipLevel: number
   vipExpiresAt: string | null
   postCount: number
@@ -137,6 +144,7 @@ export interface SearchFavoriteCollectionItem {
   updatedAt: string
   owner: {
     id: number
+    publicUid?: string | null
     username: string
     displayName: string
     avatarPath: string | null
@@ -468,24 +476,31 @@ export async function searchUsers(
     const users = total > 0
       ? await findSearchUsersPage({ where, page: safePage, pageSize })
       : []
-    const items = await Promise.all(users.map((user) => applyHookedUserPresentationToNamedItem({
-      id: user.id,
-      username: user.username,
-      displayName: getUserDisplayName(user),
-      avatarPath: user.avatarPath,
-      bio: user.bio?.trim() || "这个用户还没有留下简介。",
-      role: user.role,
-      status: user.status,
-      level: user.level,
-      vipLevel: user.vipLevel,
-      vipExpiresAt: user.vipExpiresAt?.toISOString() ?? null,
-      postCount: user.postCount,
-      commentCount: user.commentCount,
-      likeReceivedCount: user.likeReceivedCount,
-      followerCount: user._count.followedByUsers,
-      favoriteCount: user._count.favorites,
-      boardFollowCount: user._count.boardFollows,
-    })))
+    const items = await Promise.all(users.map(async (user) => {
+      const levelBadge = await getLevelBadgeData(user.level)
+
+      return applyHookedUserPresentationToNamedItem({
+        id: user.id,
+        username: user.username,
+        displayName: getUserDisplayName(user),
+        avatarPath: user.avatarPath,
+        bio: user.bio?.trim() || "这个用户还没有留下简介。",
+        role: user.role,
+        status: user.status,
+        level: user.level,
+        levelName: levelBadge.name,
+        levelColor: levelBadge.color,
+        levelIcon: levelBadge.icon,
+        vipLevel: user.vipLevel,
+        vipExpiresAt: user.vipExpiresAt?.toISOString() ?? null,
+        postCount: user.postCount,
+        commentCount: user.commentCount,
+        likeReceivedCount: user.likeReceivedCount,
+        followerCount: user._count.followedByUsers,
+        favoriteCount: user._count.favorites,
+        boardFollowCount: user._count.boardFollows,
+      })
+    }))
 
     await executeAddonActionHook("search.query.after", {
       query: normalizedKeyword,
@@ -545,6 +560,7 @@ export async function searchFavoriteCollections(
       updatedAt: collection.updatedAt.toISOString(),
       owner: {
         id: ownerItems[index]!.id,
+        publicUid: ownerItems[index]!.publicUid,
         username: ownerItems[index]!.username,
         displayName: ownerItems[index]!.displayName,
         avatarPath: ownerItems[index]!.avatarPath ?? null,
