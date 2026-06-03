@@ -34,5 +34,6 @@ export const REDIS_KEY_SCOPES = {
   },
   notifications: {
     eventPubSub: ["notification-events", "pubsub"],
+    unreadCount: ["notifications", "unread-count"],
   },
 } as const

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ExternalLink, FileArchive, Filter, Loader2, Search, Trash2 } from "lucide-react"
+import { ExternalLink, FileArchive, Filter, Loader2, RefreshCw, Trash2 } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import {
@@ -31,7 +31,11 @@ import {
 } from "@/components/ui/table"
 import { useAdminMutation } from "@/hooks/use-admin-mutation"
 import { adminPost } from "@/lib/admin-client"
-import type { AdminAttachmentCleanupResult, AdminAttachmentManagementResult } from "@/lib/admin-attachments"
+import type {
+  AdminAttachmentJobEnqueueResult,
+  AdminAttachmentManagementResult,
+  AdminAttachmentReferenceScanJobSummary,
+} from "@/lib/admin-attachments"
 import type { AdminAttachmentReferenceFilter } from "@/lib/admin-attachments"
 import { formatDateTime, formatNumber } from "@/lib/formatters"
 import { cn } from "@/lib/utils"
@@ -63,19 +67,16 @@ function formatFileSize(fileSize: number) {
   return `${Math.max(1, Math.round(fileSize / 1024))} KB`
 }
 
-function isCleanupResult(value: unknown): value is AdminAttachmentCleanupResult {
+function isJobEnqueueResult(value: unknown): value is AdminAttachmentJobEnqueueResult {
   if (!value || typeof value !== "object") {
     return false
   }
 
-  const item = value as Partial<AdminAttachmentCleanupResult>
-  return typeof item.dryRun === "boolean"
-    && typeof item.scanned === "number"
-    && typeof item.deletedRecords === "number"
-    && typeof item.deletedFiles === "number"
-    && typeof item.retainedSharedFiles === "number"
-    && typeof item.failed === "number"
-    && Array.isArray(item.candidates)
+  const item = value as Partial<AdminAttachmentJobEnqueueResult>
+  return !!item.job
+    && typeof item.job === "object"
+    && typeof item.job.id === "string"
+    && typeof item.job.status === "string"
 }
 
 function normalizeReferenceFilter(value: string): AdminAttachmentReferenceFilter {
@@ -89,8 +90,14 @@ export function AdminAttachmentManager({ data }: AdminAttachmentManagerProps) {
     referenceStatus: data.filters.referenceStatus,
     pageSize: String(data.pagination.pageSize),
   })
-  const [cleanupPreview, setCleanupPreview] = useState<AdminAttachmentCleanupResult | null>(null)
   const { isPending, runMutation } = useAdminMutation()
+  const activeScan = data.scan.activeScan
+  const activeCleanup = data.scan.activeCleanup
+  const hasSnapshot = data.scan.snapshot.total > 0
+  const scanInProgress = !!activeScan
+  const cleanupInProgress = !!activeCleanup
+  const canStartScan = !scanInProgress && !cleanupInProgress
+  const canStartCleanup = hasSnapshot && canStartScan
 
   const bucketOptions = useMemo(() => [
     { value: "ALL", label: "全部目录" },
@@ -136,23 +143,38 @@ export function AdminAttachmentManager({ data }: AdminAttachmentManagerProps) {
     return buildHref({ attachmentPage: String(page) })
   }
 
-  function runCleanup(dryRun: boolean) {
+  function startReferenceScan() {
     runMutation({
-      mutation: () => adminPost<AdminAttachmentCleanupResult>("/api/admin/attachments", {
+      mutation: () => adminPost<AdminAttachmentJobEnqueueResult>("/api/admin/attachments", {
+        action: "start-reference-scan",
+        keyword: data.filters.keyword,
+        bucketType: data.filters.bucketType,
+      }, {
+        validateData: isJobEnqueueResult,
+        invalidDataMessage: "后台任务返回格式不正确",
+        defaultErrorMessage: "附件引用深度扫描启动失败",
+      }),
+      successTitle: "扫描已入队",
+      errorTitle: "启动失败",
+      refreshRouter: true,
+    })
+  }
+
+  function runCleanup() {
+    runMutation({
+      mutation: () => adminPost<AdminAttachmentJobEnqueueResult>("/api/admin/attachments", {
         action: "cleanup-orphans",
-        dryRun,
         limit: 100,
         keyword: data.filters.keyword,
         bucketType: data.filters.bucketType,
       }, {
-        validateData: isCleanupResult,
-        invalidDataMessage: "清理结果返回格式不正确",
-        defaultErrorMessage: dryRun ? "无引用资源扫描失败" : "无引用资源清理失败",
+        validateData: isJobEnqueueResult,
+        invalidDataMessage: "后台任务返回格式不正确",
+        defaultErrorMessage: "无引用资源清理启动失败",
       }),
-      successTitle: dryRun ? "扫描完成" : "清理完成",
-      errorTitle: dryRun ? "扫描失败" : "清理失败",
-      refreshRouter: !dryRun,
-      onSuccess: (result) => setCleanupPreview(result.data),
+      successTitle: "清理已入队",
+      errorTitle: "启动失败",
+      refreshRouter: true,
     })
   }
 
@@ -175,15 +197,15 @@ export function AdminAttachmentManager({ data }: AdminAttachmentManagerProps) {
       <AdminSummaryStrip
         items={[
           { label: "上传资源", value: data.summary.total, icon: <FileArchive className="h-4 w-4" /> },
-          { label: "本页已引用", value: data.summary.referenced, tone: "emerald", hint: "当前页含内容、头像、附件等引用" },
-          { label: "本页无引用", value: data.summary.orphan, tone: data.summary.orphan > 0 ? "amber" : "slate", hint: "全量清理请先扫描" },
+          { label: "快照已引用", value: data.summary.referenced, tone: "emerald", hint: "来自最近一次后台扫描" },
+          { label: "快照无引用", value: data.summary.orphan, tone: data.summary.orphan > 0 ? "amber" : "slate", hint: "筛选和批量清理读取快照" },
           { label: "占用空间", value: formatFileSize(data.summary.totalBytes), tone: "sky", hint: "当前筛选结果合计" },
         ]}
       />
 
       <AdminFilterCard
         title="附件管理"
-        description="集中查看上传记录、引用来源和无引用资源；清理前会重新校验引用状态。"
+        description="集中查看上传记录和引用来源；默认列表使用轻量识别，已引用/无引用筛选读取后台扫描快照。"
         badge={<Badge variant="secondary" className="rounded-full">当前 {formatNumber(data.pagination.total)} 条</Badge>}
         activeBadges={activeFilterBadges}
       >
@@ -229,35 +251,49 @@ export function AdminAttachmentManager({ data }: AdminAttachmentManagerProps) {
 
       <Card>
         <CardHeader className="border-b">
-          <CardTitle>无引用资源清理</CardTitle>
-          <CardDescription>默认按当前关键词和目录筛选扫描前 100 个无引用候选；执行清理前会再次校验引用，避免误删。</CardDescription>
+          <CardTitle>引用扫描与清理</CardTitle>
+          <CardDescription>深度引用扫描和批量清理都在后台执行；清理会基于快照取候选，并在删除每个资源前再次深度校验。</CardDescription>
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button type="button" variant="outline" className="rounded-full" disabled={isPending} onClick={() => runCleanup(true)}>
-              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              扫描无引用
+            <Button type="button" variant="outline" className="rounded-full" disabled={isPending || !canStartScan} onClick={startReferenceScan}>
+              {isPending && !cleanupInProgress ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <RefreshCw data-icon="inline-start" />}
+              开始深度扫描
             </Button>
-            <Button type="button" variant="destructive" className="rounded-full" disabled={isPending || data.pagination.total === 0} onClick={() => runCleanup(false)}>
-              {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              清理无引用
+            <Button type="button" variant="destructive" className="rounded-full" disabled={isPending || !canStartCleanup} onClick={runCleanup}>
+              {isPending && !scanInProgress ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Trash2 data-icon="inline-start" />}
+              后台清理无引用
             </Button>
           </div>
         </CardHeader>
-        {cleanupPreview ? (
-          <CardContent className="flex flex-wrap gap-2 py-3 text-sm text-muted-foreground">
-            <Badge variant="outline" className="rounded-full">扫描 {cleanupPreview.scanned} 条</Badge>
-            <Badge variant="outline" className="rounded-full">候选 {cleanupPreview.candidates.length} 条</Badge>
-            <Badge variant="outline" className="rounded-full">删除记录 {cleanupPreview.deletedRecords} 条</Badge>
-            <Badge variant="outline" className="rounded-full">删除文件 {cleanupPreview.deletedFiles} 个</Badge>
-            {cleanupPreview.retainedSharedFiles > 0 ? <Badge variant="outline" className="rounded-full">共享保留 {cleanupPreview.retainedSharedFiles} 个</Badge> : null}
-            {cleanupPreview.failed > 0 ? <Badge variant="destructive" className="rounded-full">失败 {cleanupPreview.failed} 条</Badge> : null}
-          </CardContent>
-        ) : null}
+        <CardContent className="grid gap-3 py-3 md:grid-cols-3">
+          <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">引用快照</span>
+              <Badge variant={hasSnapshot ? "secondary" : "outline"} className="rounded-full">
+                {hasSnapshot ? "可用" : "未生成"}
+              </Badge>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline" className="rounded-full">总计 {formatNumber(data.scan.snapshot.total)}</Badge>
+              <Badge variant="outline" className="rounded-full">已引用 {formatNumber(data.scan.snapshot.referenced)}</Badge>
+              <Badge variant="outline" className="rounded-full">无引用 {formatNumber(data.scan.snapshot.orphan)}</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {data.scan.snapshot.latestScannedAtText ? `最近扫描 ${data.scan.snapshot.latestScannedAtText}` : "先启动一次后台深度扫描，再使用已引用/无引用筛选和批量清理。"}
+            </p>
+          </div>
+          <AttachmentJobCard title="扫描任务" job={activeScan ?? data.scan.latestScan} emptyText="暂无扫描任务" />
+          <AttachmentJobCard title="清理任务" job={activeCleanup ?? data.scan.latestCleanup} emptyText="暂无清理任务" />
+        </CardContent>
       </Card>
 
       <Card>
         <CardContent className="px-0 py-0">
           {data.rows.length === 0 ? (
-            <div className="px-6 py-12 text-center text-sm text-muted-foreground">当前筛选条件下没有上传资源。</div>
+            <div className="px-6 py-12 text-center text-sm text-muted-foreground">
+              {data.filters.referenceStatus !== "ALL" && !hasSnapshot
+                ? "还没有引用快照。请先启动后台深度扫描，扫描完成后再筛选已引用或无引用。"
+                : "当前筛选条件下没有上传资源。"}
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -313,10 +349,10 @@ export function AdminAttachmentManager({ data }: AdminAttachmentManagerProps) {
                     <TableCell className="align-top text-right">
                       <div className="flex justify-end gap-2">
                         <Link href={item.urlPath} target="_blank" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "rounded-full px-2")}>
-                          <ExternalLink className="h-3.5 w-3.5" />
+                          <ExternalLink />
                         </Link>
                         <Button type="button" variant="destructive" size="sm" className="rounded-full px-2" disabled={isPending || item.referenceStatus !== "ORPHAN"} onClick={() => deleteOne(item.id)}>
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 />
                         </Button>
                       </div>
                     </TableCell>
@@ -365,4 +401,82 @@ function PaginationLink({
       {children}
     </Link>
   )
+}
+
+function AttachmentJobCard({
+  title,
+  job,
+  emptyText,
+}: {
+  title: string
+  job: AdminAttachmentReferenceScanJobSummary | null
+  emptyText: string
+}) {
+  if (!job) {
+    return (
+      <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium">{title}</span>
+          <Badge variant="outline" className="rounded-full">空闲</Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">{emptyText}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border bg-muted/20 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium">{title}</span>
+        <Badge variant={getJobStatusBadgeVariant(job.status)} className="rounded-full">
+          {getJobStatusLabel(job.status)}
+        </Badge>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(job.progressPercent, job.status === "RUNNING" ? 4 : 0)}%` }} />
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <Badge variant="outline" className="rounded-full">进度 {formatNumber(job.progressPercent)}%</Badge>
+        <Badge variant="outline" className="rounded-full">已扫 {formatNumber(job.scanned)} / {formatNumber(job.total)}</Badge>
+        {job.kind === "SCAN" ? (
+          <>
+            <Badge variant="outline" className="rounded-full">已引用 {formatNumber(job.referenced)}</Badge>
+            <Badge variant="outline" className="rounded-full">无引用 {formatNumber(job.orphan)}</Badge>
+          </>
+        ) : (
+          <>
+            <Badge variant="outline" className="rounded-full">删除记录 {formatNumber(job.deletedRecords)}</Badge>
+            <Badge variant="outline" className="rounded-full">删除文件 {formatNumber(job.deletedFiles)}</Badge>
+            {job.failed > 0 ? <Badge variant="destructive" className="rounded-full">跳过/失败 {formatNumber(job.failed)}</Badge> : null}
+          </>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {job.errorMessage
+          ? job.errorMessage
+          : job.finishedAtText
+            ? `完成于 ${job.finishedAtText}`
+            : job.startedAtText
+              ? `开始于 ${job.startedAtText}`
+              : `创建于 ${job.createdAtText}`}
+      </p>
+    </div>
+  )
+}
+
+function getJobStatusLabel(status: AdminAttachmentReferenceScanJobSummary["status"]) {
+  return {
+    QUEUED: "排队中",
+    RUNNING: "运行中",
+    COMPLETED: "已完成",
+    FAILED: "失败",
+  }[status]
+}
+
+function getJobStatusBadgeVariant(status: AdminAttachmentReferenceScanJobSummary["status"]) {
+  return status === "FAILED"
+    ? "destructive"
+    : status === "COMPLETED"
+      ? "secondary"
+      : "outline"
 }

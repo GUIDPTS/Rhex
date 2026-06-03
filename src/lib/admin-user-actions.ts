@@ -21,6 +21,7 @@ import { createGrantedUserBadge, findBadgeSummaryById, findGrantedUserBadge, run
 import { findUserByNicknameInsensitive } from "@/db/user-queries"
 import { createSystemNotification } from "@/lib/notification-writes"
 import { notificationEventBus } from "@/lib/notification-event-bus"
+import { invalidateNotificationUserCache } from "@/lib/notification-redis-cache"
 import { applyPointDelta } from "@/lib/point-center"
 import { POINT_LOG_EVENT_TYPES } from "@/lib/point-log-events"
 
@@ -318,6 +319,7 @@ export const adminUserActionHandlers: Record<string, AdminActionDefinition> = {
       }
     })
     if (result.delta !== 0) {
+      await invalidateNotificationUserCache(userId)
       await notificationEventBus.publish({
         type: "notification.count",
         userId,

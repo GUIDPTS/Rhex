@@ -1,5 +1,6 @@
 import { toggleUserBlock } from "@/db/block-queries"
 import { apiError, apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
+import { revalidatePostViewerCache } from "@/lib/post-detail-cache"
 
 export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
   const body = await readJsonBody(request)
@@ -22,6 +23,12 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
 
   if (result.status === "missing") {
     apiError(404, "目标用户不存在")
+  }
+
+  if (result.changed) {
+    const blockedUserId = Number(targetId)
+    revalidatePostViewerCache(currentUser.id)
+    revalidatePostViewerCache(Number.isSafeInteger(blockedUserId) ? blockedUserId : null)
   }
 
   return apiSuccess(

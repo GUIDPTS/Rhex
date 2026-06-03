@@ -67,6 +67,41 @@ export async function findPostDetailBySlug(slug: string, currentUserId?: number)
   })
 }
 
+export async function findPostRouteIdentityBySlug(slug: string) {
+  const post = await prisma.post.findUnique({
+    where: { slug },
+    select: {
+      id: true,
+      slug: true,
+    },
+  })
+
+  if (post) {
+    return post
+  }
+
+  const fallbackWhere = buildPostRouteFallbackFilter(slug)
+
+  if (!fallbackWhere) {
+    return null
+  }
+
+  return prisma.post.findFirst({
+    where: fallbackWhere,
+    select: {
+      id: true,
+      slug: true,
+    },
+  })
+}
+
+export async function findPostDetailById(postId: string, currentUserId?: number) {
+  return prisma.post.findUnique({
+    where: { id: postId },
+    include: buildPostDetailInclude(currentUserId),
+  })
+}
+
 export async function findHomepagePosts(page: number, pageSize: number) {
   const normalizedPageSize = Math.min(Math.max(1, pageSize), 50)
 

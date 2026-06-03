@@ -8,14 +8,16 @@ import { HomeSidebarPanels } from "@/components/home/home-sidebar-panels"
 import { LevelIcon } from "@/components/level-icon"
 import { SiteHeader } from "@/components/site-header"
 import { Button } from "@/components/ui/rbutton"
+import { UserAvatar } from "@/components/user/user-avatar"
 import { getHomeAnnouncements } from "@/lib/announcements"
 import { getCurrentUser } from "@/lib/auth"
 import { buildLoginHrefWithRedirect } from "@/lib/auth-redirect"
 import { getBoards } from "@/lib/boards"
-import { formatNumber } from "@/lib/formatters"
+import { formatDateTime, formatNumber } from "@/lib/formatters"
 import { getHomeSidebarHotTopics, resolveSidebarUser } from "@/lib/home-sidebar"
+import { readSearchParam } from "@/lib/search-params"
 import { getSiteSettings } from "@/lib/site-settings"
-import { getVerificationTypeDetailBySlug } from "@/lib/verifications"
+import { getVerificationTypeDetailBySlug, type VerificationFormField } from "@/lib/verifications"
 import { getZones } from "@/lib/zones"
 
 export const dynamic = "force-dynamic"
@@ -23,6 +25,9 @@ export const dynamic = "force-dynamic"
 type VerificationDetailPageProps = {
   params: Promise<{
     slug: string
+  }>
+  searchParams?: Promise<{
+    user?: string | string[]
   }>
 }
 
@@ -50,9 +55,11 @@ export async function generateMetadata(props: VerificationDetailPageProps): Prom
 
 export default async function VerificationDetailPage(props: VerificationDetailPageProps) {
   const { slug } = await props.params
+  const searchParams = props.searchParams ? await props.searchParams : undefined
+  const requestedUsername = readSearchParam(searchParams?.user)?.trim() || null
   const settingsPromise = getSiteSettings()
   const currentUserPromise = getCurrentUser()
-  const verificationPromise = getVerificationTypeDetailBySlug(slug)
+  const verificationPromise = getVerificationTypeDetailBySlug(slug, { username: requestedUsername })
   const [settings, boards, zones, currentUser, announcements, verification] = await Promise.all([
     settingsPromise,
     getBoards(),
@@ -146,6 +153,26 @@ export default async function VerificationDetailPage(props: VerificationDetailPa
                     </div>
                   </div>
                 </section>
+                {verification.featuredApplication ? (
+                  <VerificationApplicationCard
+                    verification={{
+                      name: verification.name,
+                      color: verification.color,
+                      iconText: verification.iconText,
+                      formFields: verification.formFields,
+                    }}
+                    application={verification.featuredApplication}
+                  />
+                ) : requestedUsername ? (
+                  <section className="rounded-xl border border-border bg-card px-5 py-5 shadow-xs sm:px-6">
+                    <div className="flex flex-col gap-1">
+                      <h2 className="text-base font-semibold text-foreground">未找到该用户的认证资料</h2>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        @{requestedUsername} 当前没有通过 {verification.name} 认证，或该认证资料已经变更。
+                      </p>
+                    </div>
+                  </section>
+                ) : null}
               </div>
             </main>
           )}
@@ -167,6 +194,122 @@ export default async function VerificationDetailPage(props: VerificationDetailPa
       </div>
     </div>
   )
+}
+
+function VerificationApplicationCard({
+  verification,
+  application,
+}: {
+  verification: {
+    name: string
+    color: string
+    iconText: string
+    formFields: VerificationFormField[]
+  }
+  application: NonNullable<Awaited<ReturnType<typeof getVerificationTypeDetailBySlug>>>["featuredApplication"]
+}) {
+  if (!application) {
+    return null
+  }
+
+  const effectiveIcon = application.customIconText?.trim() || verification.iconText
+  const fieldEntries = buildApplicationFieldEntries(verification.formFields, application.formResponse)
+  const customDescription = application.customDescription?.trim()
+  const applicationContent = application.content?.trim()
+  const showApplicationContent = applicationContent && fieldEntries.length === 0
+
+  return (
+    <section className="rounded-xl border border-border bg-card px-5 py-6 shadow-xs sm:px-7">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <UserAvatar
+              name={application.user.displayName}
+              avatarPath={application.user.avatarPath}
+              size="lg"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                User Verification
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight text-foreground">
+                {application.user.displayName} 的{verification.name}
+              </h2>
+              <Link
+                href={`/users/${application.user.username}`}
+                className="mt-1 inline-flex text-sm text-muted-foreground transition-colors hover:text-foreground hover:underline"
+              >
+                @{application.user.username}
+              </Link>
+            </div>
+          </div>
+          <div
+            className="flex size-16 shrink-0 items-center justify-center rounded-2xl border text-[34px]"
+            style={{
+              color: verification.color,
+              borderColor: `${verification.color}40`,
+              backgroundColor: `${verification.color}10`,
+            }}
+          >
+            <LevelIcon
+              icon={effectiveIcon}
+              color={verification.color}
+              className="h-10 min-w-10 max-w-full text-[34px]"
+              emojiClassName="text-inherit"
+              svgClassName="[&>svg]:block"
+            />
+          </div>
+        </div>
+
+        {customDescription ? (
+          <div className="rounded-xl border border-border bg-background/70 px-4 py-4">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              个性描述
+            </p>
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-foreground">
+              {customDescription}
+            </p>
+          </div>
+        ) : null}
+
+        {fieldEntries.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {fieldEntries.map((field) => (
+              <div key={field.id} className="rounded-xl border border-border bg-background/70 px-4 py-3">
+                <p className="text-xs font-medium text-muted-foreground">{field.label}</p>
+                <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+                  {field.value}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+
+
+      </div>
+    </section>
+  )
+}
+
+function buildApplicationFieldEntries(fields: VerificationFormField[], formResponse: Record<string, string>) {
+  const fieldIds = new Set(fields.map((field) => field.id))
+  const knownEntries = fields
+    .map((field) => ({
+      id: field.id,
+      label: field.label,
+      value: String(formResponse[field.id] ?? "").trim(),
+    }))
+    .filter((field) => field.value.length > 0)
+  const fallbackEntries = Object.entries(formResponse)
+    .filter(([key, value]) => !fieldIds.has(key) && String(value ?? "").trim().length > 0)
+    .map(([key, value]) => ({
+      id: key,
+      label: key,
+      value: String(value ?? "").trim(),
+    }))
+
+  return [...knownEntries, ...fallbackEntries]
 }
 
 function VerificationStatCard({

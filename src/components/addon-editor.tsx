@@ -15,7 +15,7 @@ import {
   useMarkdownImageUploadEnabled,
 } from "@/components/site-settings-provider"
 
-interface AddonEditorProps extends RefinedRichPostEditorProps {
+export interface AddonEditorProps extends RefinedRichPostEditorProps {
   context?: AddonEditorTarget
 }
 

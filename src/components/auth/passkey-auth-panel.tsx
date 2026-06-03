@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/rbutton"
 import { toast } from "@/components/ui/toast"
 import { normalizeAuthRedirectTarget } from "@/lib/auth-redirect"
 
-interface PasskeyAuthPanelProps {
+export interface PasskeyAuthPanelProps {
   mode: "login" | "register"
   redirectTarget?: string
 }

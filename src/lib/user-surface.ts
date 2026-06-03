@@ -14,6 +14,7 @@ import { getCurrentUser, type SessionActor } from "@/lib/auth"
 import { getUserCheckInStreakSummary } from "@/lib/check-in-streak-service"
 import { getLocalDateKey } from "@/lib/date-key"
 import { getCachedUnreadMessageCount } from "@/lib/message-redis-cache"
+import { getCachedUnreadNotificationCount } from "@/lib/notification-redis-cache"
 import { getSiteSettings } from "@/lib/site-settings"
 
 export interface UserSurfaceSnapshot {
@@ -77,7 +78,7 @@ async function readUserSurfaceSnapshot(userId: number, todayKey: string): Promis
 
   const [settings, unreadNotificationCount, boardCount, favoriteCount, checkInRecord] = await Promise.all([
     getSiteSettings(),
-    countUnreadNotifications(userId),
+    getCachedUnreadNotificationCount(userId, () => countUnreadNotifications(userId)),
     countUserSurfaceBoardFollows(userId),
     countUserSurfaceFavorites(userId),
     findUserSurfaceCheckInRecord(userId, todayKey),

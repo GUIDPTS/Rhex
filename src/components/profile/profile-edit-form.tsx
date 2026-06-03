@@ -1,17 +1,38 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertCircle, Camera, CheckCircle2, LoaderCircle, Mail, PencilLine, Smartphone, UserRound } from "lucide-react"
 
 import { PasswordChangeForm } from "@/components/profile/password-change-form"
 import { Modal } from "@/components/ui/modal"
-import { AvatarCropModal } from "@/components/profile/avatar-crop-modal"
-import { AddonEditor } from "@/components/addon-editor"
 import { UserAvatar } from "@/components/user/user-avatar"
 import { Button } from "@/components/ui/rbutton"
 import { toast } from "@/components/ui/toast"
+import type { AddonEditorProps } from "@/components/addon-editor"
+import type { AvatarCropModalProps } from "@/components/profile/avatar-crop-modal"
 import type { MarkdownEmojiItem } from "@/lib/markdown-emoji"
 import type { UserProfileVisibility } from "@/lib/user-profile-settings"
+
+const AvatarCropModal = dynamic<AvatarCropModalProps>(
+  () => import("@/components/profile/avatar-crop-modal").then((module) => module.AvatarCropModal),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+)
+
+const ProfileIntroductionEditor = dynamic<AddonEditorProps>(
+  () => import("@/components/addon-editor").then((module) => module.AddonEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[320px] items-center justify-center rounded-xl border border-dashed border-border bg-background/60 text-sm text-muted-foreground">
+        编辑器加载中...
+      </div>
+    ),
+  },
+)
 
 interface ProfileEditFormProps {
   username: string
@@ -711,17 +732,19 @@ export function ProfileEditForm({
         </div>
       ) : null}
 
-      <AvatarCropModal
-        key={cropSourceUrl || "avatar-crop-modal"}
-        open={Boolean(cropSourceUrl)}
-        imageSrc={cropSourceUrl}
-        imageName={cropSourceName}
-        imageType={cropSourceType}
-        previewName={nickname || username}
-        onClose={clearCropSource}
-        onConfirm={handleAvatarCropConfirm}
-        onUploadOriginal={handleAvatarOriginalUpload}
-      />
+      {cropSourceUrl ? (
+        <AvatarCropModal
+          key={cropSourceUrl}
+          open={Boolean(cropSourceUrl)}
+          imageSrc={cropSourceUrl}
+          imageName={cropSourceName}
+          imageType={cropSourceType}
+          previewName={nickname || username}
+          onClose={clearCropSource}
+          onConfirm={handleAvatarCropConfirm}
+          onUploadOriginal={handleAvatarOriginalUpload}
+        />
+      ) : null}
 
       {activeSection === "email" ? (
         <form onSubmit={handleEmailSubmit} className="space-y-5 rounded-xl bg-card p-5">
@@ -896,17 +919,19 @@ export function ProfileEditForm({
             <p className="text-sm font-medium">个人介绍</p>
             <span className="text-xs text-muted-foreground">{pendingIntroduction.length}/20000</span>
           </div>
-          <AddonEditor
-            context="profile"
-            value={pendingIntroduction}
-            onChange={setPendingIntroduction}
-            minHeight={320}
-            uploadFolder="profiles"
-            markdownEmojiMap={markdownEmojiMap}
-            markdownImageUploadEnabled={markdownImageUploadEnabled}
-            renderFullscreenInDialogPortal
-            placeholder="写一段更完整的自我介绍、经历、兴趣或作品清单。支持 Markdown 语法。"
-          />
+          {showIntroductionModal ? (
+            <ProfileIntroductionEditor
+              context="profile"
+              value={pendingIntroduction}
+              onChange={setPendingIntroduction}
+              minHeight={320}
+              uploadFolder="profiles"
+              markdownEmojiMap={markdownEmojiMap}
+              markdownImageUploadEnabled={markdownImageUploadEnabled}
+              renderFullscreenInDialogPortal
+              placeholder="写一段更完整的自我介绍、经历、兴趣或作品清单。支持 Markdown 语法。"
+            />
+          ) : null}
           <p className="text-xs text-muted-foreground">{introductionHint}</p>
         </form>
       </Modal>

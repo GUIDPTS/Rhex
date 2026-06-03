@@ -9,6 +9,28 @@ import {
   reviewFavoriteCollectionSubmission,
   updateFavoriteCollection,
 } from "@/lib/favorite-collections"
+import { revalidatePostDataCache, revalidatePostSidebarCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
+
+function revalidateFavoriteCollectionPostCaches(input: {
+  userId: number
+  postId?: string | null
+  favoriteCreated?: boolean
+  affectedPostIds?: string[]
+}) {
+  const affectedPostIds = new Set(input.affectedPostIds ?? [])
+
+  for (const postId of affectedPostIds) {
+    revalidatePostSidebarCache({ postId })
+  }
+
+  if (input.favoriteCreated && input.postId) {
+    revalidatePostDataCache({ postId: input.postId })
+  }
+
+  if (affectedPostIds.size > 0 || input.favoriteCreated) {
+    revalidatePostViewerCache(input.userId)
+  }
+}
 
 export const GET = createUserRouteHandler<unknown>(async ({ request, currentUser }) => {
   const url = new URL(request.url)
@@ -47,6 +69,12 @@ export const POST = createUserRouteHandler<unknown>(async ({ request, currentUse
       input: body.collection && typeof body.collection === "object" ? body.collection as Record<string, unknown> : {},
       postId: typeof body.postId === "string" ? body.postId.trim() : undefined,
     })
+    revalidateFavoriteCollectionPostCaches({
+      userId: currentUser.id,
+      postId: created.postId,
+      favoriteCreated: created.favoriteCreated,
+      affectedPostIds: created.affectedPostIds,
+    })
     return apiSuccess(created, body.postId
       ? (created.contentAdjusted ? "合集已创建，帖子已加入，部分内容已自动替换" : "合集已创建，帖子已加入")
       : (created.contentAdjusted ? "合集已创建，部分内容已自动替换" : "合集已创建"))
@@ -58,6 +86,12 @@ export const POST = createUserRouteHandler<unknown>(async ({ request, currentUse
       postId: typeof body.postId === "string" ? body.postId.trim() : "",
       collectionId: typeof body.collectionId === "string" ? body.collectionId.trim() : "",
     })
+    revalidateFavoriteCollectionPostCaches({
+      userId: currentUser.id,
+      postId: result.postId,
+      favoriteCreated: result.favoriteCreated,
+      affectedPostIds: result.affectedPostIds,
+    })
     return apiSuccess(result, result.message)
   }
 
@@ -67,6 +101,10 @@ export const POST = createUserRouteHandler<unknown>(async ({ request, currentUse
       collectionId: typeof body.collectionId === "string" ? body.collectionId.trim() : "",
       input: body.collection && typeof body.collection === "object" ? body.collection as Record<string, unknown> : {},
     })
+    revalidateFavoriteCollectionPostCaches({
+      userId: currentUser.id,
+      affectedPostIds: updated.affectedPostIds,
+    })
     return apiSuccess(updated, updated.contentAdjusted ? "合集已更新，部分内容已自动替换" : "合集已更新")
   }
 
@@ -74,6 +112,10 @@ export const POST = createUserRouteHandler<unknown>(async ({ request, currentUse
     const deleted = await deleteFavoriteCollection({
       userId: currentUser.id,
       collectionId: typeof body.collectionId === "string" ? body.collectionId.trim() : "",
+    })
+    revalidateFavoriteCollectionPostCaches({
+      userId: currentUser.id,
+      affectedPostIds: deleted.affectedPostIds,
     })
     return apiSuccess(deleted, "合集已删除")
   }
@@ -84,6 +126,11 @@ export const POST = createUserRouteHandler<unknown>(async ({ request, currentUse
       collectionId: typeof body.collectionId === "string" ? body.collectionId.trim() : "",
       postId: typeof body.postId === "string" ? body.postId.trim() : "",
     })
+    revalidateFavoriteCollectionPostCaches({
+      userId: currentUser.id,
+      postId: result.postId,
+      affectedPostIds: result.affectedPostIds,
+    })
     return apiSuccess(result, "帖子已移出合集")
   }
 
@@ -93,6 +140,11 @@ export const POST = createUserRouteHandler<unknown>(async ({ request, currentUse
       submissionId: typeof body.submissionId === "string" ? body.submissionId.trim() : "",
       decision: body.decision === "REJECT" ? "REJECT" : "APPROVE",
       reviewNote: typeof body.reviewNote === "string" ? body.reviewNote : undefined,
+    })
+    revalidateFavoriteCollectionPostCaches({
+      userId: currentUser.id,
+      postId: result.postId,
+      affectedPostIds: result.affectedPostIds,
     })
     return apiSuccess(result, result.status === "APPROVED" ? "投稿已通过" : "投稿已驳回")
   }

@@ -9,6 +9,7 @@ import { handlePostLikeSideEffects } from "@/lib/interaction-side-effects"
 import { buildLikeTaskEventDescriptors } from "@/lib/like-task-events"
 import { enqueueSyncUserReceivedLikes } from "@/lib/level-system"
 import { enqueueNotification } from "@/lib/notification-writes"
+import { revalidatePostCommentCache, revalidatePostDataCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
 import { logRequestSucceeded } from "@/lib/request-log"
 import { recordGivenLikeTaskEvent, recordReceivedLikeTaskEvent } from "@/lib/task-center-service"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
@@ -33,6 +34,7 @@ interface PostLikeMutationResult {
 
 interface CommentLikeMutationResult {
   liked: boolean
+  postId: string | null
   targetUserId: number | null
   notificationTargetUserId: number | null
   commentPreview: string
@@ -110,6 +112,9 @@ async function applyPostLikeMutationEffects(input: {
     targetUserId: input.result.targetUserId,
   })
 
+  revalidatePostDataCache({ postId: input.postId })
+  revalidatePostViewerCache(input.actor.id)
+
   if (input.result.targetUserId) {
     revalidateUserSurfaceCache(input.result.targetUserId)
   }
@@ -148,10 +153,17 @@ async function applyCommentLikeMutationEffects(input: {
         commentId: input.commentId,
         threshold: settings.godCommentAutoLikeThreshold,
       }),
-    ).catch((error) => {
+    ).then((promotion) => {
+      if (promotion?.changed) {
+        revalidatePostCommentCache({ postId: promotion.postId })
+      }
+    }).catch((error) => {
       console.warn("[interaction-like-execution] failed to promote god comment by likes", error)
     })
   }
+
+  revalidatePostCommentCache({ postId: input.result.postId })
+  revalidatePostViewerCache(input.actor.id)
 
   if (input.result.targetUserId) {
     void enqueueSyncUserReceivedLikes(input.result.targetUserId, { notifyOnUpgrade: true })

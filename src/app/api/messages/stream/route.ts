@@ -1,10 +1,10 @@
 import { prisma } from "@/db/client"
 import { getUnreadConversationCount } from "@/db/message-read-queries"
-import { countUnreadNotifications } from "@/db/notification-read-queries"
 import { ConversationKind } from "@/db/types"
 import { createUserRouteHandler } from "@/lib/api-route"
 import { formatMonthDayTime } from "@/lib/formatters"
 import { getCachedUnreadMessageCount } from "@/lib/message-redis-cache"
+import { getCachedUnreadNotificationCount } from "@/lib/notification-redis-cache"
 import {
   buildInboxSnapshotPayload,
   buildCursorPayload,
@@ -21,36 +21,45 @@ import {
 } from "@/lib/message-event-bus"
 import { notificationEventBus } from "@/lib/notification-event-bus"
 import { getSiteSettings } from "@/lib/site-settings"
+import type { SiteSettingsData } from "@/lib/site-settings.types"
 import { SITE_CHAT_ROOM_DB_ID, isSiteChatConversationId } from "@/lib/site-chat"
 import { getUserDisplayName } from "@/lib/user-display"
+import { normalizeMessageRealtimeHeartbeatSeconds } from "@/lib/message-realtime-settings"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
 
-const HEARTBEAT_INTERVAL_MS = 15_000
 const MESSAGE_CATCH_UP_BATCH_SIZE = 50
 
 type HeartbeatWriter = (payload: string) => void
+type SharedHeartbeatBucket = {
+  writers: Set<HeartbeatWriter>
+  timer: ReturnType<typeof setInterval> | null
+}
 
 type GlobalMessageStreamState = {
-  __bbsMessageStreamHeartbeat?: {
-    writers: Set<HeartbeatWriter>
-    timer: ReturnType<typeof setInterval> | null
-  }
+  __bbsMessageStreamHeartbeat?: Map<number, SharedHeartbeatBucket>
 }
 
 const globalMessageStreamState = globalThis as typeof globalThis & GlobalMessageStreamState
 
-function getSharedHeartbeatState() {
-  globalMessageStreamState.__bbsMessageStreamHeartbeat ??= {
-    writers: new Set(),
-    timer: null,
+function getSharedHeartbeatState(intervalMs: number) {
+  globalMessageStreamState.__bbsMessageStreamHeartbeat ??= new Map()
+  let state = globalMessageStreamState.__bbsMessageStreamHeartbeat.get(intervalMs)
+
+  if (!state) {
+    state = {
+      writers: new Set(),
+      timer: null,
+    }
+    globalMessageStreamState.__bbsMessageStreamHeartbeat.set(intervalMs, state)
   }
-  return globalMessageStreamState.__bbsMessageStreamHeartbeat
+
+  return state
 }
 
-function subscribeSharedHeartbeat(writer: HeartbeatWriter) {
-  const state = getSharedHeartbeatState()
+function subscribeSharedHeartbeat(writer: HeartbeatWriter, intervalMs: number) {
+  const state = getSharedHeartbeatState(intervalMs)
   state.writers.add(writer)
 
   if (!state.timer) {
@@ -59,7 +68,7 @@ function subscribeSharedHeartbeat(writer: HeartbeatWriter) {
       for (const heartbeatWriter of state.writers) {
         heartbeatWriter(payload)
       }
-    }, HEARTBEAT_INTERVAL_MS)
+    }, intervalMs)
   }
 
   return () => {
@@ -67,6 +76,7 @@ function subscribeSharedHeartbeat(writer: HeartbeatWriter) {
     if (state.writers.size === 0 && state.timer) {
       clearInterval(state.timer)
       state.timer = null
+      globalMessageStreamState.__bbsMessageStreamHeartbeat?.delete(intervalMs)
     }
   }
 }
@@ -76,9 +86,13 @@ interface MessageStreamEventEnvelope {
   event: MessageStreamEvent
 }
 
-async function getInboxSnapshot(userId: number) {
-  const settings = await getSiteSettings()
-  const unreadNotificationCount = await countUnreadNotifications(userId)
+async function getInboxSnapshot(userId: number, settings: Pick<SiteSettingsData, "messageEnabled">) {
+  const unreadNotificationCount = await getCachedUnreadNotificationCount(userId, () => prisma.notification.count({
+    where: {
+      userId,
+      isRead: false,
+    },
+  }))
 
   if (!settings.messageEnabled) {
     return {
@@ -93,10 +107,6 @@ async function getInboxSnapshot(userId: number) {
     unreadMessageCount,
     unreadNotificationCount,
   }
-}
-
-async function getMessageFeatureEnabled() {
-  return (await getSiteSettings()).messageEnabled
 }
 
 function mapMessageRowToEnvelope(
@@ -238,10 +248,24 @@ export const GET = createUserRouteHandler(async ({ request, currentUser }) => {
   const cursorParam = requestUrl.searchParams.get("cursor")
   const lastEventId = request.headers.get("last-event-id")
   const requestedCursor = parseMessageStreamCursor(cursorParam) ?? parseMessageStreamCursor(lastEventId)
-  const [messageEnabled, inboxSnapshot] = await Promise.all([
-    getMessageFeatureEnabled(),
-    getInboxSnapshot(currentUser.id),
-  ])
+  const settings = await getSiteSettings()
+
+  if (!settings.messageRealtimeEnabled) {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    })
+  }
+
+  const messageEnabled = settings.messageEnabled
+  const requestedHeartbeatSeconds = normalizeMessageRealtimeHeartbeatSeconds(
+    requestUrl.searchParams.get("heartbeat"),
+    settings.messageRealtimeHeartbeatSeconds,
+  )
+  const heartbeatIntervalMs = Math.max(settings.messageRealtimeHeartbeatSeconds, requestedHeartbeatSeconds) * 1_000
+  const inboxSnapshot = await getInboxSnapshot(currentUser.id, settings)
   const initialCursor = messageEnabled
     ? requestedCursor ?? await findLatestCursor(currentUser.id)
     : null
@@ -421,7 +445,7 @@ export const GET = createUserRouteHandler(async ({ request, currentUser }) => {
         pushCursor(cursor)
       }
 
-      unsubscribeHeartbeat = subscribeSharedHeartbeat(push)
+      unsubscribeHeartbeat = subscribeSharedHeartbeat(push, heartbeatIntervalMs)
 
       request.signal.addEventListener("abort", close)
       closeStream = close

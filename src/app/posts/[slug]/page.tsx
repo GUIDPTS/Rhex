@@ -576,8 +576,8 @@ export default async function PostPage(props: PageProps<"/posts/[slug]">) {
                                     type={block.type}
                                     postId={displayPost.id}
                                     blockId={block.id}
-                                    text={block.text}
-                                    html={normalizedRenderedContentBlockHtmlById.get(block.id)}
+                                    text={block.visible ? block.text : undefined}
+                                    html={block.visible ? normalizedRenderedContentBlockHtmlById.get(block.id) : undefined}
                                     visible={block.visible}
                                     currentUserId={currentUser?.id}
                                     pointName={settings.pointName}

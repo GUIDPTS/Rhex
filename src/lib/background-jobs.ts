@@ -176,6 +176,12 @@ export interface BackgroundJobPayloadMap {
   "rss-harvest.process-queue-item": {
     queueId: string
   }
+  "attachments.reference-scan": {
+    scanJobId: string
+  }
+  "attachments.cleanup-orphans": {
+    cleanupJobId: string
+  }
   "addon.background-job.run": {
     addonId: string
     jobKey: string

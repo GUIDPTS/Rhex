@@ -238,6 +238,8 @@ export const defaultSiteSettingsCreateInput = {
         imageUploadEnabled: false,
         fileUploadEnabled: false,
         promptAudioPath: DEFAULT_MESSAGE_PROMPT_AUDIO_PATH,
+        realtimeEnabled: true,
+        realtimeHeartbeatSeconds: 15,
       },
       siteChat: {
         enabled: false,

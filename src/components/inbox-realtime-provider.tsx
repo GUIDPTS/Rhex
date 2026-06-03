@@ -5,6 +5,10 @@ import { usePathname } from "next/navigation"
 
 import { applyInboxStreamEvent, shouldPlayInboxPrompt, type InboxUnreadCounts } from "@/lib/inbox-prompt"
 import { DEFAULT_MESSAGE_PROMPT_AUDIO_PATH, normalizeMessagePromptAudioPath } from "@/lib/message-prompt-audio"
+import {
+  DEFAULT_MESSAGE_REALTIME_HEARTBEAT_SECONDS,
+  normalizeMessageRealtimeHeartbeatSeconds,
+} from "@/lib/message-realtime-settings"
 import type { InboxStreamEvent } from "@/lib/message-types"
 
 type InboxConnectionStatus = "connecting" | "connected" | "closed"
@@ -171,6 +175,8 @@ interface InboxRealtimeProviderProps {
   initialUnreadNotificationCount?: number
   messageEnabled?: boolean
   messagePromptAudioPath?: string
+  messageRealtimeEnabled?: boolean
+  messageRealtimeHeartbeatSeconds?: number
 }
 
 export function InboxRealtimeProvider({
@@ -180,6 +186,8 @@ export function InboxRealtimeProvider({
   initialUnreadNotificationCount = 0,
   messageEnabled = true,
   messagePromptAudioPath = DEFAULT_MESSAGE_PROMPT_AUDIO_PATH,
+  messageRealtimeEnabled = true,
+  messageRealtimeHeartbeatSeconds = DEFAULT_MESSAGE_REALTIME_HEARTBEAT_SECONDS,
 }: InboxRealtimeProviderProps) {
   const pathname = usePathname()
   const reconnectTimerRef = useRef<number | null>(null)
@@ -197,13 +205,14 @@ export function InboxRealtimeProvider({
   const messagePromptAudioBufferRef = useRef<AudioBuffer | null>(null)
   const attentionTitleRef = useRef("")
   const baseTitleRef = useRef("")
-  const [connectionStatus, setConnectionStatus] = useState<InboxConnectionStatus>(currentUserId ? "connecting" : "closed")
+  const [connectionStatus, setConnectionStatus] = useState<InboxConnectionStatus>(currentUserId && messageRealtimeEnabled ? "connecting" : "closed")
   const [unreadMessageCount, setUnreadMessageCount] = useState(initialUnreadMessageCount)
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(initialUnreadNotificationCount)
   const resolvedMessagePromptAudioPath = useMemo(
     () => normalizeMessagePromptAudioPath(messagePromptAudioPath, DEFAULT_MESSAGE_PROMPT_AUDIO_PATH),
     [messagePromptAudioPath],
   )
+  const resolvedRealtimeHeartbeatSeconds = normalizeMessageRealtimeHeartbeatSeconds(messageRealtimeHeartbeatSeconds)
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId
@@ -280,7 +289,7 @@ export function InboxRealtimeProvider({
   }, [])
 
   useEffect(() => {
-    if (!currentUserId) {
+    if (!currentUserId || !messageEnabled || !messageRealtimeEnabled) {
       return
     }
 
@@ -361,7 +370,7 @@ export function InboxRealtimeProvider({
         void audioContext.close().catch(() => undefined)
       }
     }
-  }, [currentUserId, resolvedMessagePromptAudioPath])
+  }, [currentUserId, messageEnabled, messageRealtimeEnabled, resolvedMessagePromptAudioPath])
 
   const playPromptAudio = useCallback(() => {
     const audioContext = messagePromptAudioContextRef.current
@@ -435,9 +444,10 @@ export function InboxRealtimeProvider({
   }, [currentUserId, pathname, restoreDocumentTitle, unreadMessageCount, unreadNotificationCount])
 
   useEffect(() => {
-    if (!currentUserId) {
+    if (!currentUserId || !messageRealtimeEnabled) {
       reconnectAttemptRef.current = 0
       streamCursorRef.current = null
+      setConnectionStatus("closed")
       restoreDocumentTitle()
       return
     }
@@ -581,6 +591,7 @@ export function InboxRealtimeProvider({
       if (streamCursorRef.current) {
         streamUrl.searchParams.set("cursor", streamCursorRef.current)
       }
+      streamUrl.searchParams.set("heartbeat", String(resolvedRealtimeHeartbeatSeconds))
 
       eventSource = new EventSource(streamUrl)
 
@@ -751,7 +762,7 @@ export function InboxRealtimeProvider({
       releaseLeaderLease(leaderKey, tabId)
       channel?.close()
     }
-  }, [currentUserId, messageEnabled, notifyListeners, playPromptAudio, restoreDocumentTitle])
+  }, [currentUserId, messageEnabled, messageRealtimeEnabled, notifyListeners, playPromptAudio, resolvedRealtimeHeartbeatSeconds, restoreDocumentTitle])
 
   const value = useMemo<InboxRealtimeContextValue>(() => ({
     currentUserId,

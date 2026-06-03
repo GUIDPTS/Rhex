@@ -303,6 +303,8 @@ function mapSiteSettings(record: SiteSettingsRecordData, tippingGifts: SiteTippi
     imageUploadEnabledFallback: false,
     fileUploadEnabledFallback: false,
     promptAudioPathFallback: DEFAULT_MESSAGE_PROMPT_AUDIO_PATH,
+    realtimeEnabledFallback: true,
+    realtimeHeartbeatSecondsFallback: 15,
   })
   const commentAccessSettings = resolveCommentAccessSettings({
     appStateJson: record.appStateJson,
@@ -659,6 +661,8 @@ function mapSiteSettings(record: SiteSettingsRecordData, tippingGifts: SiteTippi
     messageImageUploadEnabled: messageMediaSettings.imageUploadEnabled,
     messageFileUploadEnabled: messageMediaSettings.fileUploadEnabled,
     messagePromptAudioPath: messageMediaSettings.promptAudioPath,
+    messageRealtimeEnabled: messageMediaSettings.realtimeEnabled,
+    messageRealtimeHeartbeatSeconds: messageMediaSettings.realtimeHeartbeatSeconds,
     markdownEmojiMap: parseMarkdownEmojiMapJson(record.markdownEmojiMapJson),
     appStateJson: record.appStateJson,
   }

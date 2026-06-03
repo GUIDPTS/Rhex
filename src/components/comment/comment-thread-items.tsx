@@ -149,6 +149,7 @@ function CommentAuthorVerificationContent({
   return (
     <UserVerificationBadge
       verification={entry.authorVerification ?? null}
+      username={entry.authorUsername}
       compact
       appearance="plain"
     />

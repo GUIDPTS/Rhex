@@ -14,12 +14,14 @@ import { mapAddonNotificationRecord } from "@/addons-host/runtime/notification-r
 import { enqueueBackgroundJob, registerBackgroundJobHandler } from "@/lib/background-jobs"
 import { logError } from "@/lib/logger"
 import { notificationEventBus } from "@/lib/notification-event-bus"
+import { invalidateNotificationUserCache } from "@/lib/notification-redis-cache"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 import { enqueueUserNotificationDeliveries } from "@/lib/user-notification-delivery"
 
 export type { NotificationDraft, NotificationWriteClient }
 
 async function publishNotificationCountEvents(userIds: number[], reason: "created" | "created-batch" | "read" | "read-all", notificationIdByUserId?: Map<number, string>) {
+  await invalidateNotificationUserCache(userIds)
   const unreadCountByUserId = await countUnreadNotificationsByUserIds(userIds)
 
   await Promise.allSettled(
@@ -39,6 +41,9 @@ export async function createNotification(params: NotificationDraft & { client?: 
   void _client
   await fireNotificationCreateBefore(draft)
   const notification = await createNotificationEntry(params)
+  if (params.client) {
+    await invalidateNotificationUserCache(notification.userId)
+  }
   revalidateUserSurfaceCache(notification.userId)
   if (!params.client) {
     await publishNotificationCountEvents([notification.userId], "created", new Map([[notification.userId, notification.id]]))
@@ -64,6 +69,9 @@ export async function createNotifications(params: {
   }
 
   const userIds = [...new Set(expandedNotifications.map((item) => item.userId))]
+  if (params.client) {
+    await invalidateNotificationUserCache(userIds)
+  }
   for (const userId of userIds) {
     revalidateUserSurfaceCache(userId)
   }

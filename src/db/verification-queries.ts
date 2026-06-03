@@ -43,6 +43,31 @@ export function findApprovedUserVerification(userId: number) {
   })
 }
 
+export function findApprovedUserVerificationByTypeAndUsername(typeId: string, username: string) {
+  return prisma.userVerification.findFirst({
+    where: {
+      typeId,
+      status: "APPROVED",
+      user: { username },
+    },
+    orderBy: [{ reviewedAt: "desc" }, { submittedAt: "desc" }],
+    include: {
+      type: {
+        select: verificationApplicationTypeSelect,
+      },
+      user: {
+        select: {
+          id: true,
+          username: true,
+          nickname: true,
+          avatarPath: true,
+          status: true,
+        },
+      },
+    },
+  })
+}
+
 export function findVerificationTypeById(verificationTypeId: string) {
   return prisma.verificationType.findUnique({
     where: { id: verificationTypeId },

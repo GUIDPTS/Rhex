@@ -1,6 +1,7 @@
 import {
   createUserVerificationApplication,
   findApprovedUserVerification,
+  findApprovedUserVerificationByTypeAndUsername,
   findActiveVerificationTypeBySlug,
   findLatestUserVerificationApplication,
   findVerificationTypeById,
@@ -16,6 +17,7 @@ import { applyPointDelta, prepareScopedPointDelta } from "@/lib/point-center"
 import { POINT_LOG_EVENT_TYPES } from "@/lib/point-log-events"
 import { getSiteSettings } from "@/lib/site-settings"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
+import { getUserAvatarPath, getUserDisplayName } from "@/lib/user-display"
 import { parseVerificationFormSchema, type VerificationFormField } from "@/lib/verification-form-schema"
 export type { VerificationFieldType, VerificationFormField } from "@/lib/verification-form-schema"
 
@@ -77,6 +79,23 @@ export type VerificationTypeDetail = {
   approvedUserCount: number
   createdAt: string
   updatedAt: string
+  featuredApplication?: VerificationDetailApplication | null
+}
+
+export type VerificationDetailApplication = {
+  id: string
+  submittedAt: string
+  reviewedAt?: string | null
+  content?: string | null
+  customIconText?: string | null
+  customDescription?: string | null
+  formResponse: Record<string, string>
+  user: {
+    id: number
+    username: string
+    displayName: string
+    avatarPath?: string | null
+  }
 }
 
 export type CurrentUserVerificationData = {
@@ -208,6 +227,39 @@ function mapApplication(application: {
       iconText: application.type.iconText?.trim() || "✔️",
       color: application.type.color,
       description: application.type.description,
+    },
+  }
+}
+
+function mapDetailApplication(application: {
+  id: string
+  submittedAt: Date
+  reviewedAt: Date | null
+  content: string | null
+  customIconText: string | null
+  customDescription: string | null
+  formResponseJson?: string | null
+  user: {
+    id: number
+    username: string
+    nickname: string | null
+    avatarPath: string | null
+    status: string | null
+  }
+}): VerificationDetailApplication {
+  return {
+    id: application.id,
+    submittedAt: application.submittedAt.toISOString(),
+    reviewedAt: application.reviewedAt?.toISOString() ?? null,
+    content: application.content,
+    customIconText: application.customIconText,
+    customDescription: application.customDescription,
+    formResponse: parseFormResponseJson(application.formResponseJson),
+    user: {
+      id: application.user.id,
+      username: application.user.username,
+      displayName: getUserDisplayName(application.user, application.user.username),
+      avatarPath: getUserAvatarPath(application.user),
     },
   }
 }
@@ -430,7 +482,9 @@ export async function submitVerificationApplication(input: {
   }
 }
 
-export async function getVerificationTypeDetailBySlug(slug: string): Promise<VerificationTypeDetail | null> {
+export async function getVerificationTypeDetailBySlug(slug: string, options: {
+  username?: string | null
+} = {}): Promise<VerificationTypeDetail | null> {
   const normalizedSlug = slug.trim()
   if (!normalizedSlug) {
     return null
@@ -440,6 +494,11 @@ export async function getVerificationTypeDetailBySlug(slug: string): Promise<Ver
   if (!verificationType) {
     return null
   }
+
+  const requestedUsername = options.username?.trim()
+  const featuredApplication = requestedUsername
+    ? await findApprovedUserVerificationByTypeAndUsername(verificationType.id, requestedUsername)
+    : null
 
   return {
     id: verificationType.id,
@@ -461,6 +520,7 @@ export async function getVerificationTypeDetailBySlug(slug: string): Promise<Ver
     approvedUserCount: verificationType._count.applications,
     createdAt: verificationType.createdAt.toISOString(),
     updatedAt: verificationType.updatedAt.toISOString(),
+    featuredApplication: featuredApplication ? mapDetailApplication(featuredApplication) : null,
   }
 }
 

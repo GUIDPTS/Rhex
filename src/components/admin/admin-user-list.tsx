@@ -1,8 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { ArrowRight, Filter, ShieldCheck, UserRoundCheck, UserRoundX, Users, Zap } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
+import { ArrowRight, Filter, Loader2, ShieldCheck, Trash2, UserCog, UserRoundCheck, UserRoundX, Users, Zap } from "lucide-react"
+import { useMemo, useState, useTransition } from "react"
 
 import {
   AdminFilterActions,
@@ -13,8 +14,10 @@ import {
 import { AdminSummaryStrip } from "@/components/admin/admin-summary-strip"
 import { AdminUserModal } from "@/components/admin/admin-user-modal"
 import { UserAvatar } from "@/components/user/user-avatar"
+import { showConfirm } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Card,
   CardAction,
@@ -33,6 +36,16 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { toast } from "@/components/ui/toast"
 import { Tooltip } from "@/components/ui/tooltip"
 import { formatDateTime, formatNumber } from "@/lib/formatters"
 import type { AdminUserListItem, AdminUserListResult } from "@/lib/admin-user-management"
@@ -44,6 +57,17 @@ interface AdminUserListProps {
 }
 
 type PaginationToken = number | "ellipsis"
+type AdminUserBulkAction = "setRole" | "activate" | "mute" | "ban" | "delete"
+
+interface AdminUserBulkActionResult {
+  affectedCount: number
+  skippedCount: number
+  failedCount: number
+  skippedReasons?: Array<{
+    reason: string
+    count: number
+  }>
+}
 
 const roleOptions = [
   { value: "ALL", label: "全部角色" },
@@ -79,6 +103,14 @@ const sortOptions = [
   { value: "mostComments", label: "评论最多" },
   { value: "mostPoints", label: "积分最高" },
 ]
+const bulkActionOptions: Array<{ value: AdminUserBulkAction; label: string; danger?: boolean }> = [
+  { value: "setRole", label: "批量改用户组" },
+  { value: "activate", label: "批量恢复" },
+  { value: "mute", label: "批量禁言" },
+  { value: "ban", label: "批量封禁", danger: true },
+  { value: "delete", label: "批量删除", danger: true },
+]
+const bulkRoleOptions = roleOptions.filter((item) => item.value !== "ALL")
 
 function buildPageTokens(page: number, totalPages: number): PaginationToken[] {
   if (totalPages <= 7) {
@@ -124,6 +156,25 @@ export function AdminUserList({ data }: AdminUserListProps) {
     sort: data.filters.sort,
     pageSize: String(data.pagination.pageSize),
   })
+  const router = useRouter()
+  const [selectedUserIdsState, setSelectedUserIds] = useState<number[]>([])
+  const [bulkAction, setBulkAction] = useState<AdminUserBulkAction>("setRole")
+  const [bulkRole, setBulkRole] = useState("USER")
+  const [bulkMessage, setBulkMessage] = useState("")
+  const [bulkStatusExpiresAt, setBulkStatusExpiresAt] = useState("")
+  const [isBatchPending, startBatchTransition] = useTransition()
+
+  const visibleUserIds = useMemo(() => new Set(data.users.map((user) => user.id)), [data.users])
+  const selectedUserIds = useMemo(
+    () => selectedUserIdsState.filter((userId) => visibleUserIds.has(userId)),
+    [selectedUserIdsState, visibleUserIds],
+  )
+  const selectedCount = selectedUserIds.length
+  const allCurrentPageSelected = data.users.length > 0 && selectedCount === data.users.length
+  const someCurrentPageSelected = selectedCount > 0 && !allCurrentPageSelected
+  const selectedActionConfig = bulkActionOptions.find((item) => item.value === bulkAction) ?? bulkActionOptions[0]
+  const needsStatusFields = bulkAction === "mute" || bulkAction === "ban"
+  const needsRoleField = bulkAction === "setRole"
 
   const statCards = useMemo(
     () => [
@@ -210,6 +261,107 @@ export function AdminUserList({ data }: AdminUserListProps) {
     return `/admin?${query.toString()}`
   }
 
+  function toggleSelectUser(userId: number, checked: boolean) {
+    setSelectedUserIds((current) => {
+      if (checked) {
+        return current.includes(userId) ? current : [...current, userId]
+      }
+
+      return current.filter((item) => item !== userId)
+    })
+  }
+
+  function toggleSelectCurrentPage(checked: boolean) {
+    const currentPageIds = data.users.map((user) => user.id)
+    setSelectedUserIds((current) => {
+      if (checked) {
+        return [...new Set([...current, ...currentPageIds])]
+      }
+
+      return current.filter((userId) => !visibleUserIds.has(userId))
+    })
+  }
+
+  async function confirmBulkAction() {
+    if (selectedCount === 0) {
+      toast.warning("请先选择要处理的用户", "批量操作")
+      return
+    }
+
+    if (bulkAction === "setRole" && !bulkRole) {
+      toast.warning("请选择目标用户组", "批量操作")
+      return
+    }
+
+    const actionText = selectedActionConfig.label
+    const detailLines = [
+      `确认对已选中的 ${selectedCount} 个用户执行「${actionText}」吗？`,
+      bulkAction === "setRole" ? `目标用户组：${bulkRoleOptions.find((item) => item.value === bulkRole)?.label ?? bulkRole}` : null,
+      needsStatusFields && bulkMessage.trim() ? `处理原因：${bulkMessage.trim()}` : null,
+      needsStatusFields && bulkStatusExpiresAt ? `自动解除：${bulkStatusExpiresAt.replace("T", " ")}` : null,
+      bulkAction === "delete" ? "删除只会处理普通用户，且已有内容或关键引用的账号会被服务端跳过。" : null,
+    ].filter(Boolean).join("\n")
+
+    const confirmed = await showConfirm({
+      title: actionText,
+      description: detailLines,
+      confirmText: selectedActionConfig.danger ? "确认执行" : "确认",
+      cancelText: "取消",
+      variant: selectedActionConfig.danger ? "danger" : "default",
+    })
+
+    if (!confirmed) {
+      return
+    }
+
+    submitBulkAction()
+  }
+
+  function submitBulkAction() {
+    if (selectedCount === 0) {
+      toast.warning("请先选择要处理的用户", "批量操作")
+      return
+    }
+
+    startBatchTransition(async () => {
+      try {
+        const response = await fetch("/api/admin/users/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: bulkAction,
+            userIds: selectedUserIds,
+            role: bulkRole,
+            message: bulkMessage,
+            statusExpiresAt: bulkStatusExpiresAt,
+            statusExpiresAtTimezoneOffsetMinutes: new Date().getTimezoneOffset(),
+          }),
+        })
+        const result = await response.json().catch(() => null) as { message?: string; data?: AdminUserBulkActionResult } | null
+
+        if (!response.ok) {
+          throw new Error(result?.message ?? "批量用户操作失败")
+        }
+
+        const skippedText = result?.data?.skippedReasons?.length
+          ? `\n${result.data.skippedReasons.map((item) => `${item.reason} ${item.count} 人`).join("\n")}`
+          : ""
+        const message = `${result?.message ?? "批量操作已完成"}${skippedText}`
+
+        if ((result?.data?.skippedCount ?? 0) > 0 || (result?.data?.failedCount ?? 0) > 0) {
+          toast.warning(message, "批量操作完成")
+        } else {
+          toast.success(message, "操作成功")
+        }
+
+        setSelectedUserIds([])
+        router.refresh()
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "批量用户操作失败", "操作失败")
+      }
+    })
+  }
+
   return (
     <div className="space-y-4">
       <AdminFilterCard
@@ -291,6 +443,103 @@ export function AdminUserList({ data }: AdminUserListProps) {
             <OverviewActionLink href="/admin?tab=users&userVip=vip" label="查看 VIP 用户" />
           </CardAction>
         </CardHeader>
+        {data.users.length > 0 ? (
+          <div className="flex flex-col gap-3 border-b border-border px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <label className="flex items-center gap-2">
+                  <Checkbox
+                    checked={allCurrentPageSelected}
+                    indeterminate={someCurrentPageSelected}
+                    onCheckedChange={(checked) => toggleSelectCurrentPage(checked === true)}
+                    aria-label="全选本页用户"
+                  />
+                  <span>全选本页</span>
+                </label>
+                <span>已选 {selectedCount} 人</span>
+                {selectedCount > 0 ? (
+                  <Button type="button" variant="ghost" size="sm" className="rounded-full px-3 text-xs" disabled={isBatchPending} onClick={() => setSelectedUserIds([])}>
+                    清空选择
+                  </Button>
+                ) : null}
+              </div>
+              <Button type="button" size="sm" className="rounded-full px-3 text-xs" disabled={selectedCount === 0 || isBatchPending} onClick={() => void confirmBulkAction()}>
+                {isBatchPending ? <Loader2 data-icon="inline-start" className="animate-spin" /> : selectedActionConfig.value === "delete" ? <Trash2 data-icon="inline-start" /> : <UserCog data-icon="inline-start" />}
+                执行批量操作
+              </Button>
+            </div>
+            <div className="grid gap-2 lg:grid-cols-[150px_140px_minmax(180px,1fr)_180px] lg:items-end">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-medium text-muted-foreground">批量操作</span>
+                <Select value={bulkAction} onValueChange={(value) => setBulkAction(value as AdminUserBulkAction)} disabled={isBatchPending}>
+                  <SelectTrigger className="h-9 rounded-full bg-background px-3 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {bulkActionOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              {needsRoleField ? (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[10px] font-medium text-muted-foreground">目标用户组</span>
+                  <Select value={bulkRole} onValueChange={setBulkRole} disabled={isBatchPending}>
+                    <SelectTrigger className="h-9 rounded-full bg-background px-3 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {bulkRoleOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {needsStatusFields ? (
+                <>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-medium text-muted-foreground">处理原因</span>
+                    <Textarea
+                      value={bulkMessage}
+                      onChange={(event) => setBulkMessage(event.target.value)}
+                      placeholder="可选，留空则使用默认原因"
+                      disabled={isBatchPending}
+                      className="min-h-9 rounded-xl bg-background text-xs"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5">
+                    <span className="text-[10px] font-medium text-muted-foreground">自动解除时间</span>
+                    <Input
+                      type="datetime-local"
+                      value={bulkStatusExpiresAt}
+                      onChange={(event) => setBulkStatusExpiresAt(event.target.value)}
+                      disabled={isBatchPending}
+                      className="h-9 rounded-full bg-background px-3 text-xs"
+                    />
+                  </label>
+                </>
+              ) : (
+                <div className={cn("text-xs leading-6 text-muted-foreground", needsRoleField ? "lg:col-span-2" : "lg:col-span-3")}>
+                  {bulkAction === "activate"
+                    ? "恢复会清除禁言/封禁状态和自动解除时间。"
+                    : bulkAction === "delete"
+                      ? "删除只处理无关键内容引用的普通用户，管理员、版主和已有内容的用户会被跳过。"
+                      : "选择用户组后执行，涉及管理员调整时会保留至少一个管理员账号。"}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
         <CardContent className="px-0 py-0">
           {data.users.length === 0 ? (
             <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
@@ -304,6 +553,14 @@ export function AdminUserList({ data }: AdminUserListProps) {
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[52px]">
+                    <Checkbox
+                      checked={allCurrentPageSelected}
+                      indeterminate={someCurrentPageSelected}
+                      onCheckedChange={(checked) => toggleSelectCurrentPage(checked === true)}
+                      aria-label="全选本页用户"
+                    />
+                  </TableHead>
                   <TableHead>用户</TableHead>
                   <TableHead className="w-[180px]">联系</TableHead>
                   <TableHead className="w-[170px]">身份</TableHead>
@@ -317,7 +574,14 @@ export function AdminUserList({ data }: AdminUserListProps) {
               </TableHeader>
               <TableBody>
                 {data.users.map((user) => (
-                  <TableRow key={user.id}>
+                  <TableRow key={user.id} data-state={selectedUserIds.includes(user.id) ? "selected" : undefined}>
+                    <TableCell className="align-top">
+                      <Checkbox
+                        checked={selectedUserIds.includes(user.id)}
+                        onCheckedChange={(checked) => toggleSelectUser(user.id, checked === true)}
+                        aria-label={`选择用户 ${user.username}`}
+                      />
+                    </TableCell>
                     <TableCell className="align-top">
                       <UserProfileCell user={user} />
                     </TableCell>

@@ -540,6 +540,7 @@ model User {
   adminLogs                        AdminLog[]
   announcements                    Announcement[]                 @relation("announcementCreator")
   customPages                      CustomPage[]                   @relation("customPageCreator")
+  attachmentReferenceScanJobs      UploadReferenceScanJob[]       @relation("UploadReferenceScanJobAdmin")
   loginLogs                        UserLoginLog[]
   messageParticipants              ConversationParticipant[]
   sentDirectMessages               DirectMessage[]
@@ -1682,10 +1683,61 @@ model Upload {
   createdAt       DateTime         @default(now()) @db.Timestamptz(3)
   user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   postAttachments PostAttachment[]
+  referenceSnapshot UploadReferenceSnapshot?
 
   @@unique([userId, bucketType, fileHash])
   @@index([fileHash])
   @@index([userId, createdAt])
+}
+
+model UploadReferenceScanJob {
+  id                  String                    @id @default(cuid())
+  kind                String
+  status              String                    @default("QUEUED")
+  backgroundJobId     String?
+  adminId             Int?
+  ip                  String?
+  keyword             String?
+  bucketType          String?
+  limit               Int?
+  total               Int                       @default(0)
+  scanned             Int                       @default(0)
+  referenced          Int                       @default(0)
+  orphan              Int                       @default(0)
+  deletedRecords      Int                       @default(0)
+  deletedFiles        Int                       @default(0)
+  retainedSharedFiles Int                       @default(0)
+  failed              Int                       @default(0)
+  errorMessage        String?
+  startedAt           DateTime?                 @db.Timestamptz(3)
+  finishedAt          DateTime?                 @db.Timestamptz(3)
+  createdAt           DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                  @updatedAt @db.Timestamptz(3)
+  admin               User?                     @relation("UploadReferenceScanJobAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+  snapshots           UploadReferenceSnapshot[]
+
+  @@index([kind, status, createdAt])
+  @@index([status, createdAt])
+  @@index([adminId, createdAt])
+  @@index([backgroundJobId])
+  @@index([createdAt])
+}
+
+model UploadReferenceSnapshot {
+  uploadId             String                  @id
+  scanJobId            String?
+  referenceStatus      String
+  referenceCount       Int                     @default(0)
+  postAttachmentCount  Int                     @default(0)
+  directReferenceCount Int                     @default(0)
+  referenceSourcesJson Json?
+  scannedAt            DateTime                @default(now()) @db.Timestamptz(3)
+  upload               Upload                  @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+  scanJob              UploadReferenceScanJob? @relation(fields: [scanJobId], references: [id], onDelete: SetNull)
+
+  @@index([referenceStatus, scannedAt])
+  @@index([scanJobId])
+  @@index([scannedAt])
 }
 
 model PostAttachment {

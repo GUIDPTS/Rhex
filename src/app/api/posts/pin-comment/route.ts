@@ -1,5 +1,6 @@
 import { prisma } from "@/db/client"
 import { apiError, apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
+import { revalidatePostCommentCache } from "@/lib/post-detail-cache"
 
 export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
   const body = await readJsonBody(request)
@@ -70,6 +71,8 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
       data: { isPinnedByAuthor: false },
     })
   })
+
+  revalidatePostCommentCache({ postId })
 
   return apiSuccess(undefined, action === "pin" ? "评论已置顶" : "已取消评论置顶")
 }, {

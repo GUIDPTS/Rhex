@@ -58,6 +58,8 @@ export interface SiteSettingsUploadData {
   messageImageUploadEnabled: boolean
   messageFileUploadEnabled: boolean
   messagePromptAudioPath: string
+  messageRealtimeEnabled: boolean
+  messageRealtimeHeartbeatSeconds: number
   markdownEmojiMapJson?: string | null
   markdownEmojiMap: SiteSettingsMarkdownEmojiItem[]
   appStateJson?: string | null

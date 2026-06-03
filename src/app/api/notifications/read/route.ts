@@ -2,6 +2,7 @@ import { countUnreadNotifications } from "@/db/notification-read-queries"
 import { markNotificationAsRead } from "@/db/notification-queries"
 import { apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
 import { notificationEventBus } from "@/lib/notification-event-bus"
+import { invalidateNotificationUserCache } from "@/lib/notification-redis-cache"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 
 export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
@@ -9,6 +10,7 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
   const notificationId = requireStringField(body, "notificationId", "缺少通知 ID")
 
   await markNotificationAsRead(currentUser.id, notificationId)
+  await invalidateNotificationUserCache(currentUser.id)
   const unreadNotificationCount = await countUnreadNotifications(currentUser.id)
   revalidateUserSurfaceCache(currentUser.id)
   await notificationEventBus.publish({

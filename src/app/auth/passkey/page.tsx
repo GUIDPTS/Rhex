@@ -3,7 +3,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 
 import { AddonSlotRenderer, AddonSurfaceRenderer } from "@/addons-host"
-import { PasskeyAuthPanel } from "@/components/auth/passkey-auth-panel"
+import { PasskeyAuthPanelLoader } from "@/components/auth/passkey-auth-panel-loader"
 import { SiteHeader } from "@/components/site-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getCurrentUser } from "@/lib/auth"
@@ -82,7 +82,7 @@ export default async function PasskeyPage(props: PasskeyPageProps) {
                   <CardTitle>{mode === "register" ? "使用 Passkey 注册" : "使用 Passkey 登录"}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <PasskeyAuthPanel mode={mode} redirectTarget={redirectTarget} />
+                  <PasskeyAuthPanelLoader mode={mode} redirectTarget={redirectTarget} />
                   <p className="mt-4 text-center text-sm text-muted-foreground">
                     {mode === "register"
                       ? <Link href="/login" className="font-medium text-foreground hover:underline">已有账户，返回登录</Link>

@@ -13,6 +13,7 @@ export async function registerDefaultBackgroundJobHandlers() {
     import("@/lib/account-security"),
     import("@/lib/ai/capabilities/auto-categorize"),
     import("@/lib/ai-reply"),
+    import("@/lib/admin-attachment-background-jobs"),
     import("@/addons-host/runtime/background-jobs"),
     import("@/lib/rss-harvest"),
     import("@/lib/background-task"),

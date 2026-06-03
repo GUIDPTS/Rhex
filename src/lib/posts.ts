@@ -9,7 +9,16 @@ import type { AnonymousDisplayIdentity } from "@/lib/post-anonymous"
 import { getAnonymousMaskDisplayIdentity } from "@/lib/post-anonymous"
 
 import { getPublicPostContentText, parsePostContentDocument } from "@/lib/post-content"
-import { getPostSeoCacheTag, POST_DETAIL_CACHE_REVALIDATE_SECONDS, POST_SEO_CACHE_TAG } from "@/lib/post-detail-cache"
+import {
+  getPostDetailDataCacheTag,
+  getPostDetailSlugCacheTag,
+  getPostSeoCacheTag,
+  getPostViewerCacheTag,
+  POST_DETAIL_CACHE_REVALIDATE_SECONDS,
+  POST_DETAIL_DATA_CACHE_TAG,
+  POST_PERSONALIZED_CACHE_REVALIDATE_SECONDS,
+  POST_SEO_CACHE_TAG,
+} from "@/lib/post-detail-cache"
 import type { PostAuctionSummary } from "@/lib/post-auctions"
 import type { PostRedPacketSummary } from "@/lib/post-red-packets"
 import type { PostTipSummary } from "@/lib/post-tips"
@@ -18,7 +27,7 @@ import { withRuntimeFallback } from "@/lib/runtime-errors"
 import type { SiteTippingGiftItem } from "@/lib/site-settings"
 
 
-import { findEditablePostBySlug, findHomepagePosts, findPostDetailBySlug, findPostSeoBySlug } from "@/db/post-queries"
+import { findEditablePostBySlug, findHomepagePosts, findPostDetailById, findPostDetailBySlug, findPostRouteIdentityBySlug, findPostSeoBySlug } from "@/db/post-queries"
 import { recordPostViewCount } from "@/lib/post-view-count-buffer"
 
 import { mapListPost } from "@/lib/post-map"
@@ -417,30 +426,84 @@ export async function getHomepagePosts(page = 1, pageSize = 20): Promise<SitePos
   })
 }
 
+type PostDetailOptions = { isAdmin?: boolean; userReplyCount?: number; purchasedBlockIds?: Set<string>; purchasedBlockBuyerCounts?: Map<string, number>; tipSummary?: PostTipSummary; redPacketSummary?: PostRedPacketSummary; auctionSummary?: PostAuctionSummary | null }
+
+async function mapPostDetailRecord(
+  post: Post & PostDetailRelations,
+  currentUserId?: number,
+  options?: PostDetailOptions,
+) {
+  const anonymousMaskIdentity = await getAnonymousMaskDisplayIdentity()
+  const mappedPost = mapPostDetail(post, currentUserId, {
+    ...options,
+    anonymousMaskIdentity,
+  })
+  const [presentationHookedPost] = await applyHookedUserPresentationToSitePosts([mappedPost])
+  return presentationHookedPost ?? mappedPost
+}
+
+async function readPostDetailById(postId: string, currentUserId?: number): Promise<SitePostItem | null> {
+  const post = await findPostDetailById(postId, currentUserId)
+
+  if (!post) {
+    return null
+  }
+
+  return mapPostDetailRecord(post, currentUserId)
+}
+
+async function readPostDetailBySlug(
+  slug: string,
+  currentUserId?: number,
+  options?: PostDetailOptions,
+): Promise<SitePostItem | null> {
+  const post = await findPostDetailBySlug(slug, currentUserId)
+
+  if (!post) {
+    return null
+  }
+
+  return mapPostDetailRecord(post, currentUserId, options)
+}
+
+async function getPersistentPostDetailById(postId: string, canonicalSlug: string, currentUserId?: number) {
+  const viewerKey = currentUserId ? `user:${currentUserId}` : "guest"
+  const viewerTags = currentUserId ? [getPostViewerCacheTag(currentUserId)] : []
+
+  return unstable_cache(
+    async () => readPostDetailById(postId, currentUserId),
+    [POST_DETAIL_DATA_CACHE_TAG, postId, viewerKey],
+    {
+      tags: [
+        POST_DETAIL_DATA_CACHE_TAG,
+        getPostDetailDataCacheTag(postId),
+        getPostDetailSlugCacheTag(canonicalSlug),
+        ...viewerTags,
+      ],
+      revalidate: POST_PERSONALIZED_CACHE_REVALIDATE_SECONDS,
+    },
+  )()
+}
+
 
 export async function getPostDetailBySlug(
   slug: string,
   currentUserId?: number,
-  options?: { isAdmin?: boolean; userReplyCount?: number; purchasedBlockIds?: Set<string>; purchasedBlockBuyerCounts?: Map<string, number>; tipSummary?: PostTipSummary; redPacketSummary?: PostRedPacketSummary; auctionSummary?: PostAuctionSummary | null },
+  options?: PostDetailOptions,
 ): Promise<SitePostItem | null> {
 
   try {
-    const [post, anonymousMaskIdentity] = await Promise.all([
-      findPostDetailBySlug(slug, currentUserId),
-      getAnonymousMaskDisplayIdentity(),
-    ])
+    if (options) {
+      return await readPostDetailBySlug(slug, currentUserId, options)
+    }
 
-    if (!post) {
+    const routeIdentity = await findPostRouteIdentityBySlug(slug)
 
+    if (!routeIdentity) {
       return null
     }
 
-    const mappedPost = mapPostDetail(post, currentUserId, {
-      ...options,
-      anonymousMaskIdentity,
-    })
-    const [presentationHookedPost] = await applyHookedUserPresentationToSitePosts([mappedPost])
-    return presentationHookedPost ?? mappedPost
+    return await getPersistentPostDetailById(routeIdentity.id, routeIdentity.slug, currentUserId)
   } catch (error) {
     console.error(error)
     return null

@@ -198,11 +198,13 @@ function ZoneBoardsDropdown({
 }
 
 function PostAuthorVerificationContent({
+  post,
   verification,
 }: PostDetailHeaderVerificationSurfaceProps) {
   return (
     <UserVerificationBadge
       verification={verification}
+      username={post.authorUsername ?? post.author}
       compact
       appearance="plain"
     />

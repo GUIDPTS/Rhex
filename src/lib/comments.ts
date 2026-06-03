@@ -2,9 +2,17 @@ import { findCommentEffectFeedbackByCommentIds } from "@/db/comment-effect-feedb
 import { countRootCommentsByPostId, countUserRepliesByPostId, countVisibleCommentsByPostId, findCommentRewardClaimsByCommentIds, findCommentsByIds, findFlatCommentPositionLookupsByPostId, findFlatCommentsByPostId, findRepliesByParentIds, findRootCommentsByPostId } from "@/db/comment-queries"
 import { countPostGiftEventsBySenderForCommentIds, listCommentGiftStatsByCommentIds, listCommentGiftSupportAggregatesByCommentIds, listRecentCommentGiftEventsByCommentIds, type PostGiftRecentEventItem, type PostGiftStatItem } from "@/db/post-gift-queries"
 import { countPostTipEventsBySenderForCommentIds, findPostTipSupportersByIds, listCommentTipSupportAggregatesByCommentIds } from "@/db/post-tip-queries"
+import { unstable_cache } from "next/cache"
+
 import { getAiAgentUserId } from "@/lib/ai-agent"
 import { formatRelativeTime } from "@/lib/formatters"
 import type { AnonymousDisplayIdentity } from "@/lib/post-anonymous"
+import {
+  getPostCommentListCacheTag,
+  getPostViewerCacheTag,
+  POST_COMMENT_LIST_CACHE_TAG,
+  POST_PERSONALIZED_CACHE_REVALIDATE_SECONDS,
+} from "@/lib/post-detail-cache"
 import type { PostTipLeaderboardItem } from "@/lib/post-tips"
 import type { PostRewardPoolEffectFeedback } from "@/lib/post-reward-effect-feedback"
 import type { PostRewardPoolMode } from "@/lib/post-reward-pool-config"
@@ -150,6 +158,15 @@ export interface GetCommentsOptions {
   viewMode?: "tree" | "flat"
 }
 
+interface CommentViewerContext {
+  userId?: number
+  isAdmin?: boolean
+  postAuthorId?: number
+  postIsAnonymous?: boolean
+  commentsVisibleToAuthorOnly?: boolean
+  anonymousPostAuthor?: AnonymousDisplayIdentity | null
+}
+
 export type SiteFlatCommentItem = {
   type: "comment"
   comment: SiteCommentItem
@@ -281,22 +298,52 @@ function buildPrivateCommentPlaceholder(recipientName?: string | null) {
     : "此回复为私密回复"
 }
 
-export async function getCommentsByPostId(
+function normalizeCommentOptions(options: GetCommentsOptions = {}) {
+  return {
+    sort: options.sort ?? "oldest",
+    page: Math.max(1, options.page ?? 1),
+    pageSize: Math.min(50, Math.max(1, options.pageSize ?? 10)),
+    viewMode: options.viewMode ?? "tree",
+  }
+}
+
+function buildAnonymousIdentityCacheKey(identity?: AnonymousDisplayIdentity | null) {
+  if (!identity) {
+    return "none"
+  }
+
+  return JSON.stringify({
+    id: identity.id,
+    username: identity.username,
+    name: identity.name,
+    avatarPath: identity.avatarPath ?? null,
+    status: identity.status,
+    authorIsVip: identity.authorIsVip ?? false,
+    authorVipLevel: identity.authorVipLevel ?? 0,
+    authorVerification: identity.authorVerification ?? null,
+    authorDisplayedBadges: identity.authorDisplayedBadges ?? [],
+    authorRoleBadge: identity.authorRoleBadge ?? null,
+    authorIdentityTags: identity.authorIdentityTags ?? [],
+  })
+}
+
+function buildCommentViewerCacheKey(viewer?: CommentViewerContext) {
+  return [
+    viewer?.userId ? `user:${viewer.userId}` : "guest",
+    viewer?.isAdmin ? "admin" : "member",
+    `post-author:${viewer?.postAuthorId ?? "none"}`,
+    `post-anonymous:${viewer?.postIsAnonymous ? "1" : "0"}`,
+    `author-only:${viewer?.commentsVisibleToAuthorOnly ? "1" : "0"}`,
+    `anonymous-mask:${buildAnonymousIdentityCacheKey(viewer?.anonymousPostAuthor)}`,
+  ]
+}
+
+async function readCommentsByPostId(
   postId: string,
   options: GetCommentsOptions = {},
-  viewer?: {
-    userId?: number
-    isAdmin?: boolean
-    postAuthorId?: number
-    postIsAnonymous?: boolean
-    commentsVisibleToAuthorOnly?: boolean
-    anonymousPostAuthor?: AnonymousDisplayIdentity | null
-  },
+  viewer?: CommentViewerContext,
 ): Promise<SiteCommentListResult> {
-  const sort = options.sort ?? "oldest"
-  const page = Math.max(1, options.page ?? 1)
-  const pageSize = Math.min(50, Math.max(1, options.pageSize ?? 10))
-  const viewMode = options.viewMode ?? "tree"
+  const { sort, page, pageSize, viewMode } = normalizeCommentOptions(options)
   try {
     const aiAgentUserId = await getAiAgentUserId()
 
@@ -897,6 +944,37 @@ export async function getCommentsByPostId(
       viewMode,
     }
   }
+}
+
+export async function getCommentsByPostId(
+  postId: string,
+  options: GetCommentsOptions = {},
+  viewer?: CommentViewerContext,
+): Promise<SiteCommentListResult> {
+  const normalizedOptions = normalizeCommentOptions(options)
+  const viewerCacheKey = buildCommentViewerCacheKey(viewer)
+  const viewerTags = viewer?.userId ? [getPostViewerCacheTag(viewer.userId)] : []
+
+  return unstable_cache(
+    async () => readCommentsByPostId(postId, normalizedOptions, viewer),
+    [
+      POST_COMMENT_LIST_CACHE_TAG,
+      postId,
+      normalizedOptions.sort,
+      String(normalizedOptions.page),
+      String(normalizedOptions.pageSize),
+      normalizedOptions.viewMode,
+      ...viewerCacheKey,
+    ],
+    {
+      tags: [
+        POST_COMMENT_LIST_CACHE_TAG,
+        getPostCommentListCacheTag(postId),
+        ...viewerTags,
+      ],
+      revalidate: POST_PERSONALIZED_CACHE_REVALIDATE_SECONDS,
+    },
+  )()
 }
 
 export async function getUserReplyCountByPost(postId: string, userId?: number) {

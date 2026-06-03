@@ -4,6 +4,7 @@ import { findRootCommentPageById } from "@/db/comment-queries"
 import { countUnreadNotifications, findCommentsWithPostByIds, findNotificationsByUserIdCursor, findPostsByIds, findUsersByIds } from "@/db/notification-read-queries"
 import { decodeTimestampCursor, encodeTimestampCursor } from "@/lib/cursor-pagination"
 import { formatMonthDayTime } from "@/lib/formatters"
+import { getCachedUnreadNotificationCount } from "@/lib/notification-redis-cache"
 import { getAnonymousMaskDisplayIdentity } from "@/lib/post-anonymous"
 import { getPostCommentPath, getPostPath } from "@/lib/post-links"
 import { getSiteSettings } from "@/lib/site-settings"
@@ -45,7 +46,7 @@ export interface UserNotificationsResult {
 
 export async function getUserUnreadNotificationCount(userId: number) {
   try {
-    return await countUnreadNotifications(userId)
+    return await getCachedUnreadNotificationCount(userId, () => countUnreadNotifications(userId))
   } catch (error) {
     console.error(error)
     return 0

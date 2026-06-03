@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache"
 
 import { apiSuccess, createUserRouteHandler, readJsonBody, requireNumberField, requireStringField } from "@/lib/api-route"
 import { getPostAuctionSummary, placePostAuctionBid } from "@/lib/post-auctions"
+import { revalidatePostDataCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 import { createRequestWriteGuardOptions } from "@/lib/write-guard-policies"
 import { withRequestWriteGuard } from "@/lib/write-guard"
@@ -26,9 +27,11 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
     })
 
     for (const userId of result.changedUserIds) {
+      revalidatePostViewerCache(userId)
       revalidateUserSurfaceCache(userId)
     }
 
+    revalidatePostDataCache({ postId, slug: result.postSlug })
     revalidatePath(`/posts/${result.postSlug}`)
     revalidatePath("/")
 

@@ -185,6 +185,8 @@ export interface MessageMediaSettings {
   imageUploadEnabled: boolean
   fileUploadEnabled: boolean
   promptAudioPath: string
+  realtimeEnabled: boolean
+  realtimeHeartbeatSeconds: number
 }
 
 export interface HomeSidebarAnnouncementSettings {

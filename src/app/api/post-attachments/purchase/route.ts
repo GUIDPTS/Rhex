@@ -1,4 +1,5 @@
 import { apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
+import { revalidatePostDataCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
 import { purchasePostAttachment } from "@/lib/post-attachments"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 import { createRequestWriteGuardOptions } from "@/lib/write-guard-policies"
@@ -20,6 +21,8 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
     })
 
     if (!result.alreadyOwned && result.attachment) {
+      revalidatePostDataCache({ postId: result.attachment.postId })
+      revalidatePostViewerCache(currentUser.id)
       revalidateUserSurfaceCache(currentUser.id)
       revalidateUserSurfaceCache(result.attachment.post.authorId)
     }

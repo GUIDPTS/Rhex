@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { apiSuccess, createUserRouteHandler, readJsonBody, readOptionalStringField, requireNumberField, requireSearchParam, requireStringField } from "@/lib/api-route"
 import { revalidateContentListCaches } from "@/lib/content-list-cache"
+import { revalidatePostDataCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
 import { getPostTipSummary, tipPost } from "@/lib/post-tips"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 import { createRequestWriteGuardOptions } from "@/lib/write-guard-policies"
@@ -37,6 +38,8 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
     })
 
     revalidateContentListCaches()
+    revalidatePostDataCache({ postId })
+    revalidatePostViewerCache(currentUser.id)
     revalidateUserSurfaceCache(currentUser.id)
     revalidateUserSurfaceCache(result.recipientUserId)
 

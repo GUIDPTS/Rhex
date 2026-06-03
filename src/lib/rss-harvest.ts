@@ -1,3 +1,5 @@
+import { revalidateTag, unstable_cache } from "next/cache"
+
 import { prisma } from "@/db/client"
 import { resolvePagination, type PaginationResult } from "@/db/helpers"
 import type { Prisma, RssLogLevel, RssTriggerType } from "@/db/types"
@@ -77,6 +79,8 @@ import { sleep } from "@/lib/shared/async"
 import { addMinutes, addSeconds, toIsoString } from "@/lib/shared/date"
 import { normalizeBoolean, normalizeNumber, normalizeText, normalizeTrimmedText } from "@/lib/shared/normalizers"
 import { toPrismaJsonValue } from "@/lib/shared/prisma-json"
+
+export const RSS_SETTINGS_CACHE_TAG = "rss-settings"
 
 const RSS_SOURCE_PAGE_SIZE = 10
 const RSS_MODAL_PAGE_SIZE = 20
@@ -1204,16 +1208,47 @@ export async function saveRssSettings(input: Record<string, unknown>) {
   const current = await getOrCreateRssSettingRecord()
   const normalized = normalizeSettingsInput(input)
 
-  return updateRssSettingRecord(current.id, normalized)
+  const updated = await updateRssSettingRecord(current.id, normalized)
+  revalidateRssSettingsCache()
+  return updated
 }
 
-export async function getRssHomeDisplaySettings() {
+function revalidateRssSettingsCache() {
+  try {
+    revalidateTag(RSS_SETTINGS_CACHE_TAG, "max")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (
+      message.startsWith("Invariant: static generation store missing in revalidateTag")
+      || message.includes('used "revalidateTag ')
+    ) {
+      return
+    }
+
+    throw error
+  }
+}
+
+async function readRssHomeDisplaySettings() {
   const settings = await getOrCreateRssSettingRecord()
 
   return {
     homeDisplayEnabled: settings.homeDisplayEnabled,
     homePageSize: settings.homePageSize,
   }
+}
+
+const getPersistentRssHomeDisplaySettings = unstable_cache(
+  readRssHomeDisplaySettings,
+  ["rss-settings:home-display"],
+  {
+    tags: [RSS_SETTINGS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getRssHomeDisplaySettings() {
+  return getPersistentRssHomeDisplaySettings()
 }
 
 export async function testRssSourceConnection(input: Record<string, unknown>) {

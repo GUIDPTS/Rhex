@@ -9,7 +9,7 @@ import { UserAvatar } from "@/components/user/user-avatar"
 import { Button } from "@/components/ui/rbutton"
 import { createAvatarCroppedFile, createAvatarCropPreviewUrl } from "@/lib/avatar-crop"
 
-interface AvatarCropModalProps {
+export interface AvatarCropModalProps {
   open: boolean
   imageSrc: string
   imageName?: string

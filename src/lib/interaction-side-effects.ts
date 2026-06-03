@@ -7,6 +7,7 @@ import {
 import { syncUserReceivedLikes } from "@/lib/level-system"
 import { logError } from "@/lib/logger"
 import { enrollUserInLotteryPool } from "@/lib/lottery"
+import { revalidatePostCommentCache, revalidatePostDataCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
 import { tryTriggerPostRewardPool } from "@/lib/post-red-packets"
 
 function logSideEffectError(scope: string, error: unknown) {
@@ -42,6 +43,11 @@ registerInteractionEffectHooks({
         ? swallowSideEffect(`post-like:lottery:${input.postId}:${input.userId}`, () => enrollUserInLotteryPool({ postId: input.postId, userId: input.userId }))
         : Promise.resolve(null),
     ])
+
+    if (input.liked) {
+      revalidatePostDataCache({ postId: input.postId })
+      revalidatePostViewerCache(input.userId)
+    }
   },
 
   async onPostFavorite(input) {
@@ -60,6 +66,8 @@ registerInteractionEffectHooks({
         userId: input.userId,
       })),
     ])
+    revalidatePostDataCache({ postId: input.postId })
+    revalidatePostViewerCache(input.userId)
   },
   async onCommentCreate(input) {
     await Promise.all([
@@ -75,6 +83,8 @@ registerInteractionEffectHooks({
         replyCommentId: input.commentId,
       })),
     ])
+    revalidatePostCommentCache({ postId: input.postId })
+    revalidatePostViewerCache(input.userId)
   },
 })
 

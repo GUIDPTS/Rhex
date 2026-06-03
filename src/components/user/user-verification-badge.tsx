@@ -17,13 +17,14 @@ export interface UserVerificationBadgeItem {
 
 interface UserVerificationBadgeProps {
   verification?: UserVerificationBadgeItem | null
+  username?: string | null
   compact?: boolean
   className?: string
   iconClassName?: string
   appearance?: "outlined" | "plain"
 }
 
-export function UserVerificationBadge({ verification, compact = false, className, iconClassName, appearance = "outlined" }: UserVerificationBadgeProps) {
+export function UserVerificationBadge({ verification, username, compact = false, className, iconClassName, appearance = "outlined" }: UserVerificationBadgeProps) {
   if (!verification) {
     return null
   }
@@ -32,8 +33,12 @@ export function UserVerificationBadge({ verification, compact = false, className
   const tooltipContent = verification.customDescription?.trim()
     ? `${verification.customDescription.trim()}`
     : verification.description?.trim() || verification.name
-  const href = verification.slug?.trim()
-    ? `/verifications/${verification.slug.trim()}`
+  const normalizedSlug = verification.slug?.trim()
+  const normalizedUsername = username?.trim()
+  const href = normalizedSlug
+    ? normalizedUsername
+      ? `/verifications/${normalizedSlug}?user=${encodeURIComponent(normalizedUsername)}`
+      : `/verifications/${normalizedSlug}`
     : null
   const wrapperClassName = cn(
     "inline-flex items-center justify-center align-middle",

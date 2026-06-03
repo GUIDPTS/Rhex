@@ -2,10 +2,12 @@ import { countUnreadNotifications } from "@/db/notification-read-queries"
 import { markAllNotificationsAsRead } from "@/db/notification-queries"
 import { apiSuccess, createUserRouteHandler } from "@/lib/api-route"
 import { notificationEventBus } from "@/lib/notification-event-bus"
+import { invalidateNotificationUserCache } from "@/lib/notification-redis-cache"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 
 export const POST = createUserRouteHandler(async ({ currentUser }) => {
   await markAllNotificationsAsRead(currentUser.id)
+  await invalidateNotificationUserCache(currentUser.id)
   const unreadNotificationCount = await countUnreadNotifications(currentUser.id)
   revalidateUserSurfaceCache(currentUser.id)
   await notificationEventBus.publish({

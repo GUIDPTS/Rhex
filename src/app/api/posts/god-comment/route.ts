@@ -1,6 +1,7 @@
 import { findCommentPositionByPostId } from "@/db/comment-queries"
 import { apiError, apiSuccess, createAdminRouteHandler, readJsonBody, readOptionalNumberField, requireStringField } from "@/lib/api-route"
 import { toggleGodCommentByAdmin } from "@/lib/god-comments"
+import { revalidatePostCommentCache } from "@/lib/post-detail-cache"
 import { getSiteSettings } from "@/lib/site-settings"
 import { ensureCanManageComment } from "@/lib/moderator-permissions"
 
@@ -21,6 +22,7 @@ export const POST = createAdminRouteHandler(async ({ request, adminUser }) => {
     adminUserId: adminUser.id,
     action,
   })
+  revalidatePostCommentCache({ postId: comment.postId })
 
   const requestPageSize = readOptionalNumberField(body, "pageSize")
   const settings = requestPageSize ? null : await getSiteSettings()

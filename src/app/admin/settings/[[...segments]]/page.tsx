@@ -195,6 +195,8 @@ export default async function AdminSettingsPage(
               messageImageUploadEnabled: Boolean(siteSettings!.messageImageUploadEnabled),
               messageFileUploadEnabled: Boolean(siteSettings!.messageFileUploadEnabled),
               messagePromptAudioPath: siteSettings!.messagePromptAudioPath,
+              messageRealtimeEnabled: Boolean(siteSettings!.messageRealtimeEnabled),
+              messageRealtimeHeartbeatSeconds: siteSettings!.messageRealtimeHeartbeatSeconds,
             }}
           />
         ) : null}

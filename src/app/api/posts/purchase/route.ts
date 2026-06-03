@@ -1,6 +1,7 @@
 import { prisma } from "@/db/client"
 import { apiError, apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
 import { parsePostContentDocument } from "@/lib/post-content"
+import { revalidatePostDataCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
 import { isPublicReadablePostStatus } from "@/lib/post-types"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 import { purchasePostBlock } from "@/lib/post-unlock"
@@ -50,6 +51,9 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
       price: targetBlock.price,
       sellerId: post.authorId,
     })
+
+    revalidatePostDataCache({ postId })
+    revalidatePostViewerCache(currentUser.id)
 
     if (!result.alreadyOwned) {
       revalidateUserSurfaceCache(currentUser.id)

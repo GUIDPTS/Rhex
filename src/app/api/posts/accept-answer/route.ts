@@ -4,6 +4,7 @@ import { prisma } from "@/db/client"
 import { apiError, apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
 import { createSystemNotification } from "@/lib/notification-writes"
 import { applyPointDelta, prepareScopedPointDelta } from "@/lib/point-center"
+import { revalidatePostCommentCache, revalidatePostDataCache } from "@/lib/post-detail-cache"
 import { getSiteSettings } from "@/lib/site-settings"
 
 export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
@@ -119,10 +120,16 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
       content: `你的回复已被采纳为悬赏帖答案${post.bountyPoints ? `，奖励基准为 ${post.bountyPoints} ${settings.pointName}` : ""}。`,
     })
 
-    return Math.max(0, preparedReward?.finalDelta ?? 0)
+    return {
+      reward: Math.max(0, preparedReward?.finalDelta ?? 0),
+      answerUserId: comment.userId,
+    }
   })
 
-  return apiSuccess(undefined, `已采纳答案，奖励 ${result} ${settings.pointName}`)
+  revalidatePostDataCache({ postId })
+  revalidatePostCommentCache({ postId })
+
+  return apiSuccess(undefined, `已采纳答案，奖励 ${result.reward} ${settings.pointName}`)
 }, {
   errorMessage: "采纳答案失败",
   logPrefix: "[api/posts/accept-answer] unexpected error",

@@ -4,7 +4,6 @@ import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import QRCode from "qrcode"
 
 import { Modal } from "@/components/ui/modal"
 import {
@@ -316,6 +315,7 @@ export function PointsTopupCard({
       }
 
       if (order.presentation.type === "QR_CODE" && order.presentation.qrCode) {
+        const { default: QRCode } = await import("qrcode")
         const qrDataUrl = await QRCode.toDataURL(order.presentation.qrCode, {
           width: 240,
           margin: 2,

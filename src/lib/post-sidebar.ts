@@ -1,8 +1,16 @@
 import "server-only"
 
+import { unstable_cache } from "next/cache"
+
 import { executeAddonAsyncWaterfallHook } from "@/addons-host/runtime/hooks"
 import { queryAddonPosts } from "@/addons-host/runtime/posts"
 import { findPostSidebarData } from "@/db/post-sidebar-queries"
+import {
+  getPostSidebarCacheTag,
+  getPostViewerCacheTag,
+  POST_PERSONALIZED_CACHE_REVALIDATE_SECONDS,
+  POST_SIDEBAR_CACHE_TAG,
+} from "@/lib/post-detail-cache"
 import { PUBLIC_READABLE_POST_STATUSES } from "@/lib/post-types"
 
 interface PostSidebarRelatedTopic {
@@ -75,14 +83,14 @@ async function resolveHookedRelatedTopics(input: {
   ).values()]
 }
 
-export async function getPostSidebarData(
+async function readPostSidebarData(
   postId: string,
   authorUsername: string,
   relatedPostsLimit = 5,
   currentUserId?: number | null,
   input?: {
     pathname?: string
-    searchParams?: URLSearchParams
+    searchParams?: URLSearchParams | string
   },
 ) {
   const { author, postTags, relatedPosts, favoriteCollections } = await findPostSidebarData(
@@ -95,7 +103,9 @@ export async function getPostSidebarData(
     postId,
     relatedTopics: relatedPosts,
     pathname: input?.pathname,
-    searchParams: input?.searchParams,
+    searchParams: typeof input?.searchParams === "string"
+      ? new URLSearchParams(input.searchParams)
+      : input?.searchParams,
   })
 
   return {
@@ -118,4 +128,44 @@ export async function getPostSidebarData(
       visibility: item.collection.visibility,
     })),
   }
+}
+
+export async function getPostSidebarData(
+  postId: string,
+  authorUsername: string,
+  relatedPostsLimit = 5,
+  currentUserId?: number | null,
+  input?: {
+    pathname?: string
+    searchParams?: URLSearchParams
+  },
+) {
+  const viewerKey = currentUserId ? `user:${currentUserId}` : "guest"
+  const viewerTags = currentUserId ? [getPostViewerCacheTag(currentUserId)] : []
+  const pathname = input?.pathname ?? ""
+  const searchParams = input?.searchParams?.toString() ?? ""
+
+  return unstable_cache(
+    async () => readPostSidebarData(postId, authorUsername, relatedPostsLimit, currentUserId, {
+      pathname,
+      searchParams,
+    }),
+    [
+      POST_SIDEBAR_CACHE_TAG,
+      postId,
+      authorUsername,
+      String(relatedPostsLimit),
+      viewerKey,
+      pathname,
+      searchParams,
+    ],
+    {
+      tags: [
+        POST_SIDEBAR_CACHE_TAG,
+        getPostSidebarCacheTag(postId),
+        ...viewerTags,
+      ],
+      revalidate: POST_PERSONALIZED_CACHE_REVALIDATE_SECONDS,
+    },
+  )()
 }

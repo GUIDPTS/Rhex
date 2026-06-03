@@ -137,7 +137,19 @@ export function CurrentUserProvider({ children }: { children: React.ReactNode })
   return <CurrentUserContext.Provider value={value}>{children}</CurrentUserContext.Provider>
 }
 
-export function CurrentUserInboxProvider({ children, messageEnabled = true, messagePromptAudioPath }: { children: React.ReactNode; messageEnabled?: boolean; messagePromptAudioPath?: string }) {
+export function CurrentUserInboxProvider({
+  children,
+  messageEnabled = true,
+  messagePromptAudioPath,
+  messageRealtimeEnabled = true,
+  messageRealtimeHeartbeatSeconds,
+}: {
+  children: React.ReactNode
+  messageEnabled?: boolean
+  messagePromptAudioPath?: string
+  messageRealtimeEnabled?: boolean
+  messageRealtimeHeartbeatSeconds?: number
+}) {
   const { user, surface } = useCurrentUser()
 
   return (
@@ -148,6 +160,8 @@ export function CurrentUserInboxProvider({ children, messageEnabled = true, mess
       initialUnreadNotificationCount={surface?.unreadNotificationCount ?? 0}
       messageEnabled={messageEnabled}
       messagePromptAudioPath={messagePromptAudioPath}
+      messageRealtimeEnabled={messageRealtimeEnabled}
+      messageRealtimeHeartbeatSeconds={messageRealtimeHeartbeatSeconds}
     >
       {children}
     </InboxRealtimeProvider>

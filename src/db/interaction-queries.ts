@@ -16,6 +16,7 @@ export async function toggleCommentLike(params: {
     where: { id: params.commentId },
     select: {
       id: true,
+      postId: true,
       userId: true,
       content: true,
       likeCount: true,
@@ -41,6 +42,7 @@ export async function toggleCommentLike(params: {
 
     return {
       liked: false,
+      postId: comment?.postId ?? null,
       targetUserId,
       notificationTargetUserId: comment && comment.userId !== params.userId ? comment.userId : null,
       commentPreview: comment?.content.slice(0, 80) ?? "",
@@ -82,6 +84,7 @@ export async function toggleCommentLike(params: {
 
   return {
     liked: true,
+    postId: comment?.postId ?? null,
     targetUserId,
     notificationTargetUserId: comment && comment.userId !== params.userId ? comment.userId : null,
     commentPreview: comment?.content.slice(0, 80) ?? "",

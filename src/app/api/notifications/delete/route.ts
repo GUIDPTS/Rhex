@@ -2,6 +2,7 @@ import { countUnreadNotifications } from "@/db/notification-read-queries"
 import { deleteAllNotificationsByUserId, deleteNotificationByUserId } from "@/db/notification-queries"
 import { apiSuccess, createUserRouteHandler, readJsonBody, readOptionalStringField } from "@/lib/api-route"
 import { notificationEventBus } from "@/lib/notification-event-bus"
+import { invalidateNotificationUserCache } from "@/lib/notification-redis-cache"
 import { revalidateUserSurfaceCache } from "@/lib/user-surface"
 
 export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
@@ -15,6 +16,7 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
       ? await deleteNotificationByUserId(currentUser.id, notificationId)
       : { count: 0 }
 
+  await invalidateNotificationUserCache(currentUser.id)
   const unreadNotificationCount = await countUnreadNotifications(currentUser.id)
   revalidateUserSurfaceCache(currentUser.id)
   await notificationEventBus.publish({

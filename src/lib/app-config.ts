@@ -1,8 +1,14 @@
 import {
+  revalidateTag,
+  unstable_cache,
+} from "next/cache"
+
+import {
   createSiteSettingsAppStateRecord,
   findSiteSettingsAppStateRecord,
   updateSiteSettingsAppState,
 } from "@/db/app-config-queries"
+import { SITE_SETTINGS_CACHE_TAG } from "@/lib/site-settings"
 
 
 
@@ -12,6 +18,8 @@ const APP_CONFIG_KEYS = {
   selfServeAds: "app.self-serve-ads",
   yinYangContract: "app.yinyang-contract",
 } as const
+
+export const APP_CONFIG_CACHE_TAG = "app-config"
 
 
 
@@ -129,9 +137,31 @@ async function upsertAppConfig(configKey: string, defaults: AppConfigValue, inpu
   }
 
   await updateSiteSettingsAppState(settings.id, serializePluginState(state))
+  revalidateAppConfigCache()
 
 
   return nextConfig
+}
+
+function revalidateAppConfigTag(tag: string) {
+  try {
+    revalidateTag(tag, "max")
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (
+      message.startsWith("Invariant: static generation store missing in revalidateTag")
+      || message.includes('used "revalidateTag ')
+    ) {
+      return
+    }
+
+    throw error
+  }
+}
+
+export function revalidateAppConfigCache() {
+  revalidateAppConfigTag(APP_CONFIG_CACHE_TAG)
+  revalidateAppConfigTag(SITE_SETTINGS_CACHE_TAG)
 }
 
 export const GOBANG_DEFAULT_CONFIG = {
@@ -179,28 +209,66 @@ export const YINYANG_CONTRACT_DEFAULT_CONFIG = {
 } satisfies AppConfigValue
 
 
-export async function getGobangAppConfig() {
-
+async function readGobangAppConfig() {
   const { state } = await readStateMap()
   return normalizeConfig(GOBANG_DEFAULT_CONFIG, state[APP_CONFIG_KEYS.gobang]?.config)
+}
+
+const getPersistentGobangAppConfig = unstable_cache(
+  readGobangAppConfig,
+  ["app-config:gobang"],
+  {
+    tags: [APP_CONFIG_CACHE_TAG, SITE_SETTINGS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getGobangAppConfig() {
+  return getPersistentGobangAppConfig()
 }
 
 export async function updateGobangAppConfig(input: Record<string, unknown>) {
   return upsertAppConfig(APP_CONFIG_KEYS.gobang, GOBANG_DEFAULT_CONFIG, input)
 }
 
-export async function getSelfServeAdsAppConfig() {
+async function readSelfServeAdsAppConfig() {
   const { state } = await readStateMap()
   return normalizeConfig(SELF_SERVE_ADS_DEFAULT_CONFIG, state[APP_CONFIG_KEYS.selfServeAds]?.config)
+}
+
+const getPersistentSelfServeAdsAppConfig = unstable_cache(
+  readSelfServeAdsAppConfig,
+  ["app-config:self-serve-ads"],
+  {
+    tags: [APP_CONFIG_CACHE_TAG, SITE_SETTINGS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getSelfServeAdsAppConfig() {
+  return getPersistentSelfServeAdsAppConfig()
 }
 
 export async function updateSelfServeAdsAppConfig(input: Record<string, unknown>) {
   return upsertAppConfig(APP_CONFIG_KEYS.selfServeAds, SELF_SERVE_ADS_DEFAULT_CONFIG, input)
 }
 
-export async function getYinYangContractAppConfig() {
+async function readYinYangContractAppConfig() {
   const { state } = await readStateMap()
   return normalizeConfig(YINYANG_CONTRACT_DEFAULT_CONFIG, state[APP_CONFIG_KEYS.yinYangContract]?.config)
+}
+
+const getPersistentYinYangContractAppConfig = unstable_cache(
+  readYinYangContractAppConfig,
+  ["app-config:yinyang-contract"],
+  {
+    tags: [APP_CONFIG_CACHE_TAG, SITE_SETTINGS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getYinYangContractAppConfig() {
+  return getPersistentYinYangContractAppConfig()
 }
 
 export async function updateYinYangContractAppConfig(input: Record<string, unknown>) {

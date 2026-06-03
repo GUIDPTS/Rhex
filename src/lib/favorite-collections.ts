@@ -249,6 +249,17 @@ async function createCollectionItemInTransaction(tx: Prisma.TransactionClient, p
   })
 }
 
+async function findFavoriteCollectionItemPostIds(collectionId: string) {
+  const items = await prisma.favoriteCollectionItem.findMany({
+    where: { collectionId },
+    select: {
+      postId: true,
+    },
+  })
+
+  return items.map((item) => item.postId)
+}
+
 export async function ensureUserFavorite(userId: number, postId: string) {
   const existing = await prisma.favorite.findUnique({
     where: {
@@ -519,7 +530,7 @@ export async function addPostToFavoriteCollection(params: {
     apiError(403, "无权将帖子加入这个合集")
   }
 
-  await ensureUserFavorite(params.userId, params.postId)
+  const favoriteCreated = await ensureUserFavorite(params.userId, params.postId)
 
   if (collection.ownerId === params.userId || !collection.requireContributionApproval) {
     await prisma.$transaction(async (tx) => {
@@ -537,6 +548,9 @@ export async function addPostToFavoriteCollection(params: {
       status: "APPROVED" as const,
       message: "帖子已加入合集",
       collectionTitle: collection.title,
+      postId: params.postId,
+      favoriteCreated,
+      affectedPostIds: [params.postId],
     }
   }
 
@@ -568,6 +582,9 @@ export async function addPostToFavoriteCollection(params: {
     status: "PENDING" as const,
     message: "已提交到合集，等待审核",
     collectionTitle: collection.title,
+    postId: params.postId,
+    favoriteCreated,
+    affectedPostIds: [],
   }
 }
 
@@ -593,17 +610,20 @@ export async function createFavoriteCollection(params: {
     },
   })
 
-  if (params.postId) {
-    await addPostToFavoriteCollection({
+  const addResult = params.postId
+    ? await addPostToFavoriteCollection({
       userId: params.userId,
       postId: params.postId,
       collectionId: created.id,
     })
-  }
+    : null
 
   return {
     ...created,
     contentAdjusted: normalized.contentAdjusted,
+    postId: addResult?.postId,
+    favoriteCreated: addResult?.favoriteCreated ?? false,
+    affectedPostIds: addResult?.affectedPostIds ?? [],
   }
 }
 
@@ -618,12 +638,19 @@ export async function updateFavoriteCollection(params: {
     select: {
       id: true,
       ownerId: true,
+      items: {
+        select: {
+          postId: true,
+        },
+      },
     },
   })
 
   if (!existing || existing.ownerId !== params.userId) {
     apiError(404, "合集不存在或无权修改")
   }
+
+  const affectedPostIds = existing.items.map((item) => item.postId)
 
   const updated = await prisma.favoriteCollection.update({
     where: { id: params.collectionId },
@@ -643,6 +670,7 @@ export async function updateFavoriteCollection(params: {
   return {
     ...updated,
     contentAdjusted: normalized.contentAdjusted,
+    affectedPostIds,
   }
 }
 
@@ -663,11 +691,16 @@ export async function deleteFavoriteCollection(params: {
     apiError(404, "合集不存在或无权删除")
   }
 
+  const affectedPostIds = await findFavoriteCollectionItemPostIds(params.collectionId)
+
   await prisma.favoriteCollection.delete({
     where: { id: params.collectionId },
   })
 
-  return existing
+  return {
+    ...existing,
+    affectedPostIds,
+  }
 }
 
 export async function removePostFromFavoriteCollection(params: {
@@ -715,6 +748,8 @@ export async function removePostFromFavoriteCollection(params: {
 
   return {
     collectionTitle: collection.title,
+    postId: params.postId,
+    affectedPostIds: [params.postId],
   }
 }
 
@@ -769,6 +804,8 @@ export async function reviewFavoriteCollectionSubmission(params: {
     return {
       status: "APPROVED" as const,
       collectionTitle: submission.collection.title,
+      postId: submission.postId,
+      affectedPostIds: [submission.postId],
     }
   }
 
@@ -785,6 +822,8 @@ export async function reviewFavoriteCollectionSubmission(params: {
   return {
     status: "REJECTED" as const,
     collectionTitle: submission.collection.title,
+    postId: submission.postId,
+    affectedPostIds: [],
   }
 }
 

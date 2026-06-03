@@ -415,6 +415,7 @@ function UserProfilePreviewCardContent({ data }: { data: UserPreviewCardData }) 
                   {user.verification ? (
                     <UserVerificationBadge
                       verification={user.verification}
+                      username={user.username}
                       compact
                       appearance="plain"
                       className="h-7 min-w-7"

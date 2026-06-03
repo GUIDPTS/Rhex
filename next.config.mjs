@@ -28,7 +28,9 @@ const nextConfig = {
   experimental: {
     serverSourceMaps:false,
     proxyClientMaxBodySize: "64mb",
-    turbopackMemoryLimit: 1024 * 1024 * 1024,
+    staticGenerationRetryCount: 1,
+    staticGenerationMaxConcurrency: 4,
+    staticGenerationMinPagesPerWorker: 25,
   },
   turbopack: {
     root: projectRoot,

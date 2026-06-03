@@ -2,6 +2,7 @@ import { prisma } from "@/db/client"
 import { apiError, apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
 import { drawLotteryWinners } from "@/lib/lottery"
 import { canManageBoard, resolveAdminActorFromSessionUser } from "@/lib/moderator-permissions"
+import { revalidatePostDataCache } from "@/lib/post-detail-cache"
 
 export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
   const body = await readJsonBody(request)
@@ -33,6 +34,7 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
   }
 
   const result = await drawLotteryWinners(postId, { actorId: currentUser.id })
+  revalidatePostDataCache({ postId })
   return apiSuccess(result, "开奖成功")
 }, {
   errorMessage: "开奖失败",

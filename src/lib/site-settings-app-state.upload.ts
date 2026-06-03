@@ -9,6 +9,10 @@ import {
 } from "@/lib/site-settings-app-state.types"
 import { normalizeMessagePromptAudioPath } from "@/lib/message-prompt-audio"
 import {
+  normalizeMessageRealtimeEnabled,
+  normalizeMessageRealtimeHeartbeatSeconds,
+} from "@/lib/message-realtime-settings"
+import {
   normalizeWatermarkFontAssets,
   resolveKnownWatermarkFontFamily,
 } from "@/lib/watermark-lib"
@@ -390,6 +394,8 @@ export function resolveMessageMediaSettings(options: {
   imageUploadEnabledFallback?: boolean
   fileUploadEnabledFallback?: boolean
   promptAudioPathFallback?: string
+  realtimeEnabledFallback?: boolean
+  realtimeHeartbeatSecondsFallback?: number
 } = {}): MessageMediaSettings {
   const siteSettingsState = readSiteSettingsState(options.appStateJson)
   const messageMedia = isRecord(siteSettingsState.messageMedia)
@@ -413,6 +419,14 @@ export function resolveMessageMediaSettings(options: {
       messageMedia.promptAudioPath,
       options.promptAudioPathFallback,
     ),
+    realtimeEnabled: normalizeMessageRealtimeEnabled(
+      messageMedia.realtimeEnabled,
+      options.realtimeEnabledFallback,
+    ),
+    realtimeHeartbeatSeconds: normalizeMessageRealtimeHeartbeatSeconds(
+      messageMedia.realtimeHeartbeatSeconds,
+      options.realtimeHeartbeatSecondsFallback,
+    ),
   }
 }
 
@@ -429,6 +443,8 @@ export function mergeMessageMediaSettings(
       imageUploadEnabled: Boolean(input.imageUploadEnabled),
       fileUploadEnabled: Boolean(input.fileUploadEnabled),
       promptAudioPath: normalizeMessagePromptAudioPath(input.promptAudioPath),
+      realtimeEnabled: normalizeMessageRealtimeEnabled(input.realtimeEnabled),
+      realtimeHeartbeatSeconds: normalizeMessageRealtimeHeartbeatSeconds(input.realtimeHeartbeatSeconds),
     },
   })
 }

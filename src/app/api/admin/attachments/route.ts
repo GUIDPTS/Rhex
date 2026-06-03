@@ -4,6 +4,7 @@ import { apiSuccess, createAdminRouteHandler, readJsonBody } from "@/lib/api-rou
 import {
   cleanupOrphanUploads,
   deleteOrphanUploadById,
+  enqueueAttachmentReferenceScan,
   getAdminAttachmentManagement,
 } from "@/lib/admin-attachments"
 import { getRequestIp } from "@/lib/request-ip"
@@ -29,9 +30,20 @@ export const POST = createAdminRouteHandler<unknown>(async ({ request, adminUser
   const body = await readJsonBody(request)
   const action = String(body.action ?? "").trim()
 
+  if (action === "start-reference-scan") {
+    const result = await enqueueAttachmentReferenceScan({
+      bucketType: typeof body.bucketType === "string" ? body.bucketType : "ALL",
+      keyword: typeof body.keyword === "string" ? body.keyword : "",
+      adminId: adminUser.id,
+      ip: getRequestIp(request),
+    })
+
+    revalidatePath("/admin")
+    return apiSuccess(result, "附件引用深度扫描已进入后台队列")
+  }
+
   if (action === "cleanup-orphans") {
     const result = await cleanupOrphanUploads({
-      dryRun: body.dryRun !== false,
       limit: Number(body.limit ?? 100),
       bucketType: typeof body.bucketType === "string" ? body.bucketType : "ALL",
       keyword: typeof body.keyword === "string" ? body.keyword : "",
@@ -39,11 +51,8 @@ export const POST = createAdminRouteHandler<unknown>(async ({ request, adminUser
       ip: getRequestIp(request),
     })
 
-    if (!result.dryRun) {
-      revalidatePath("/admin")
-    }
-
-    return apiSuccess(result, result.dryRun ? "扫描完成" : "无引用资源清理完成")
+    revalidatePath("/admin")
+    return apiSuccess(result, "无引用资源清理已进入后台队列")
   }
 
   if (action === "delete-orphan") {

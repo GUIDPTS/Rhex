@@ -359,7 +359,7 @@ export default async function UserPage(props: PageProps<"/users/[username]">) {
       <>
         {hasIdentityIcons ? (
           <span className="inline-flex shrink-0 items-center gap-1">
-            {user.verification ? <UserVerificationBadge verification={user.verification} appearance="plain" compact className="h-5 min-w-5 sm:h-[22px] sm:min-w-[22px]" iconClassName="h-5 min-w-5 text-[20px] sm:h-[22px] sm:min-w-[22px] sm:text-[22px]" /> : null}
+            {user.verification ? <UserVerificationBadge verification={user.verification} username={user.username} appearance="plain" compact className="h-5 min-w-5 sm:h-[22px] sm:min-w-[22px]" iconClassName="h-5 min-w-5 text-[20px] sm:h-[22px] sm:min-w-[22px] sm:text-[22px]" /> : null}
             {isAnonymousMaskUser ? <AnonymousUserIndicator /> : null}
             {isAiAgentUser ? <AiAgentIndicator /> : null}
             {restrictionLabel ? <UserStatusBadge status={user.status} compact /> : null}

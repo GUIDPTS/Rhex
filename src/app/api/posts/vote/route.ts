@@ -1,5 +1,6 @@
 import { prisma } from "@/db/client"
 import { apiError, apiSuccess, createUserRouteHandler, readJsonBody, requireStringField } from "@/lib/api-route"
+import { revalidatePostDataCache, revalidatePostViewerCache } from "@/lib/post-detail-cache"
 
 export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
   const body = await readJsonBody(request)
@@ -61,6 +62,9 @@ export const POST = createUserRouteHandler(async ({ request, currentUser }) => {
       },
     })
   })
+
+  revalidatePostDataCache({ postId })
+  revalidatePostViewerCache(currentUser.id)
 
   return apiSuccess(undefined, "投票成功")
 }, {

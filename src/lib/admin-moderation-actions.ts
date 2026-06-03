@@ -15,10 +15,14 @@ import { revalidateContentListCaches } from "@/lib/content-list-cache"
 import { revalidateHomeSidebarStatsCache } from "@/lib/home-sidebar-stats"
 import { ensureCanEditBoard, ensureCanManageComment } from "@/lib/moderator-permissions"
 import { createSystemNotification } from "@/lib/notification-writes"
+import { revalidatePostCommentCache } from "@/lib/post-detail-cache"
 import { toggleGodCommentByAdmin } from "@/lib/god-comments"
 import { recordApprovedCommentTaskEvent } from "@/lib/task-center-service"
 import { expireTaxonomyCacheImmediately } from "@/lib/taxonomy-cache"
 
+function revalidateCommentPostCache(comment: { postId: string; post: { slug: string } }) {
+  revalidatePostCommentCache({ postId: comment.postId, slug: comment.post.slug })
+}
 
 export const adminModerationActionHandlers: Record<string, AdminActionDefinition> = {
   "comment.hide": defineAdminAction({ targetType: "COMMENT", revalidatePaths: ["/", "/admin"], buildDetail: () => "管理员下线评论" }, async (context) => {
@@ -31,6 +35,7 @@ export const adminModerationActionHandlers: Record<string, AdminActionDefinition
     })
     revalidateContentListCaches()
     revalidateHomeSidebarStatsCache()
+    revalidateCommentPostCache(comment)
 
     if (comment.userId !== context.adminUserId) {
       await createSystemNotification({
@@ -64,6 +69,7 @@ export const adminModerationActionHandlers: Record<string, AdminActionDefinition
     await deleteCommentPermanently(context.targetId)
     revalidateContentListCaches()
     revalidateHomeSidebarStatsCache()
+    revalidateCommentPostCache(comment)
 
     if (comment.userId !== context.adminUserId) {
       await createSystemNotification({
@@ -99,6 +105,7 @@ export const adminModerationActionHandlers: Record<string, AdminActionDefinition
     })
     revalidateContentListCaches()
     revalidateHomeSidebarStatsCache()
+    revalidateCommentPostCache(comment)
 
     if (comment.userId !== context.adminUserId) {
       await createSystemNotification({
@@ -129,6 +136,7 @@ export const adminModerationActionHandlers: Record<string, AdminActionDefinition
     })
     revalidateContentListCaches()
     revalidateHomeSidebarStatsCache()
+    revalidateCommentPostCache(comment)
 
     if (comment.userId !== context.adminUserId) {
       await createSystemNotification({
@@ -168,6 +176,7 @@ export const adminModerationActionHandlers: Record<string, AdminActionDefinition
     })
     revalidateContentListCaches()
     revalidateHomeSidebarStatsCache()
+    revalidateCommentPostCache(comment)
 
     if (comment.userId !== context.adminUserId) {
       await createSystemNotification({
@@ -201,6 +210,7 @@ export const adminModerationActionHandlers: Record<string, AdminActionDefinition
       adminUserId: context.adminUserId,
       action: "mark",
     })
+    revalidateCommentPostCache(comment)
     await writeAdminActionLog(context, adminModerationActionHandlers["comment.markGod"].metadata)
     return {
       message: "评论已设为神评",
@@ -217,6 +227,7 @@ export const adminModerationActionHandlers: Record<string, AdminActionDefinition
       adminUserId: context.adminUserId,
       action: "unmark",
     })
+    revalidateCommentPostCache(comment)
     await writeAdminActionLog(context, adminModerationActionHandlers["comment.unmarkGod"].metadata)
     return {
       message: "已取消神评",
