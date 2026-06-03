@@ -8,6 +8,7 @@ import {
   toggleAdminAnnouncementPin,
   updateAdminAnnouncementStatus,
 } from "@/lib/admin-announcements"
+import { revalidateSiteDocumentsCache } from "@/lib/site-documents"
 
 export const GET = createAdminRouteHandler(async () => {
   const items = await getAdminAnnouncementList()
@@ -37,6 +38,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
 
   if (action === "delete") {
     await removeAdminAnnouncement(String(input.id ?? ""))
+    revalidateSiteDocumentsCache()
     revalidatePath("/")
     revalidatePath("/help")
     revalidatePath("/announcements")
@@ -46,6 +48,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
 
   if (action === "toggle-pin") {
     await toggleAdminAnnouncementPin(String(input.id ?? ""), Boolean(input.isPinned))
+    revalidateSiteDocumentsCache()
     revalidatePath("/")
     revalidatePath("/help")
     revalidatePath("/announcements")
@@ -55,6 +58,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
 
   if (action === "update-status") {
     await updateAdminAnnouncementStatus(String(input.id ?? ""), input.status)
+    revalidateSiteDocumentsCache()
     revalidatePath("/")
     revalidatePath("/help")
     revalidatePath("/announcements")
@@ -64,6 +68,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
 
   await saveAdminAnnouncement(input)
 
+  revalidateSiteDocumentsCache()
   revalidatePath("/")
   revalidatePath("/help")
   revalidatePath("/announcements")

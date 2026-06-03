@@ -30,6 +30,9 @@ export interface CurrentUserClient {
 interface CurrentUserPayload {
   user: CurrentUserClient | null
   surface: UserSurfaceSnapshot | null
+  features?: {
+    homeAutoCheckIn?: boolean
+  }
 }
 
 interface ApiSuccessPayload<T> {
@@ -84,6 +87,9 @@ function normalizePayload(payload: unknown): CurrentUserPayload {
   return {
     user: record.user ?? null,
     surface: record.surface ?? null,
+    features: record.features && typeof record.features === "object"
+      ? record.features
+      : undefined,
   }
 }
 

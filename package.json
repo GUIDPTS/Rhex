@@ -12,6 +12,7 @@
     "setup": "tsx scripts/setup.ts",
     "setup:prod": "cross-env NODE_ENV=production pnpm run setup",
     "lint": "eslint .",
+    "load:test": "tsx scripts/load-test.ts",
     "worker": "cross-env NODE_ENV=production NODE_OPTIONS=--conditions=react-server tsx scripts/worker.ts",
     "worker:debug": "cross-env NODE_ENV=production NODE_OPTIONS=\"--conditions=react-server --stack-trace-limit=100\" tsx scripts/worker.ts",
     "version:sync": "tsx scripts/copy-release-to-version.ts",

@@ -1,4 +1,9 @@
 import { getPostTipSummary, type PostTipSummary } from "@/lib/post-tips"
+import {
+  normalizePostListDisplayMode,
+  POST_LIST_DISPLAY_MODE_WEIBO,
+  type PostListDisplayMode,
+} from "@/lib/post-list-display"
 
 export type PostListTipSummary = {
   enabled: boolean
@@ -36,6 +41,10 @@ export function mapPostTipSummaryToListTipSummary(summary: PostTipSummary): Post
     totalPoints: summary.tipTotalPoints,
     topSupporters: summary.topSupporters,
   }
+}
+
+export function shouldAttachPostListTipSummaries(listDisplayMode?: PostListDisplayMode | null): boolean {
+  return normalizePostListDisplayMode(listDisplayMode) === POST_LIST_DISPLAY_MODE_WEIBO
 }
 
 export async function attachPostListTipSummaries<T extends { id: string }>(

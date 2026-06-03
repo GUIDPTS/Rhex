@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache"
 
 import { apiSuccess, createAdminRouteHandler, readJsonBody, readOptionalStringField } from "@/lib/api-route"
-import { createFriendLinkByAdmin, reviewFriendLink } from "@/lib/friend-links"
+import { createFriendLinkByAdmin, revalidateFriendLinksCache, reviewFriendLink } from "@/lib/friend-links"
 
 export const POST = createAdminRouteHandler(async ({ request }) => {
   const body = await readJsonBody(request)
@@ -21,6 +21,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
       reviewNote,
     })
 
+    revalidateFriendLinksCache()
     revalidatePath("/")
     revalidatePath("/link")
     revalidatePath("/admin")
@@ -40,6 +41,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
     logoPath,
   })
 
+  revalidateFriendLinksCache()
   revalidatePath("/")
   revalidatePath("/link")
   revalidatePath("/admin")

@@ -1,3 +1,5 @@
+import { revalidateTag, unstable_cache } from "next/cache"
+
 import { findPublishedSiteDocumentByTypeAndSlug, findPublishedSiteDocuments, type SiteDocumentRow } from "@/db/site-document-queries"
 import { formatMonthDayTime, serializeDateTime } from "@/lib/formatters"
 import {
@@ -9,6 +11,8 @@ import {
   type SiteDocumentRecordBase,
   type SiteDocumentType,
 } from "@/lib/site-document-types"
+
+export const SITE_DOCUMENTS_CACHE_TAG = "site-documents"
 
 export interface SiteDocumentItem extends SiteDocumentRecordBase {
   typeLabel: string
@@ -49,10 +53,37 @@ function mapSiteDocument(item: SiteDocumentRow): SiteDocumentItem {
   }
 }
 
-export async function getPublishedSiteDocumentItems(type: SiteDocumentType, limit?: number) {
+async function readPublishedSiteDocumentItems(type: SiteDocumentType, limit?: number) {
   const items = await findPublishedSiteDocuments(type, limit)
   return items.map(mapSiteDocument)
 }
+
+const getPersistentPublishedSiteDocumentItems = unstable_cache(
+  async (type: SiteDocumentType, limit?: number) => readPublishedSiteDocumentItems(type, limit),
+  ["site-documents:list"],
+  {
+    tags: [SITE_DOCUMENTS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getPublishedSiteDocumentItems(type: SiteDocumentType, limit?: number) {
+  return getPersistentPublishedSiteDocumentItems(type, limit)
+}
+
+async function readPublishedSiteDocumentBySlug(type: SiteDocumentType, slug: string) {
+  const item = await findPublishedSiteDocumentByTypeAndSlug(type, slug)
+  return item ? mapSiteDocument(item) : null
+}
+
+const getPersistentPublishedSiteDocumentBySlug = unstable_cache(
+  readPublishedSiteDocumentBySlug,
+  ["site-documents:by-slug"],
+  {
+    tags: [SITE_DOCUMENTS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
 
 export async function getPublishedSiteDocumentBySlug(type: SiteDocumentType, slugSegments?: string[]) {
   const slug = resolveSiteDocumentSlugFromSegments(slugSegments)
@@ -60,8 +91,15 @@ export async function getPublishedSiteDocumentBySlug(type: SiteDocumentType, slu
     return null
   }
 
-  const item = await findPublishedSiteDocumentByTypeAndSlug(type, slug)
-  return item ? mapSiteDocument(item) : null
+  return getPersistentPublishedSiteDocumentBySlug(type, slug)
+}
+
+export function revalidateSiteDocumentsCache() {
+  try {
+    revalidateTag(SITE_DOCUMENTS_CACHE_TAG, { expire: 0 })
+  } catch {
+    // Ignore when called outside a Next.js request context.
+  }
 }
 
 export async function getHelpDocumentPageData(slugSegments?: string[]) {

@@ -1,3 +1,5 @@
+import { revalidateTag, unstable_cache } from "next/cache"
+
 import { FriendLinkStatus } from "@/db/types"
 
 import {
@@ -14,7 +16,9 @@ import { apiError } from "@/lib/api-route"
 import { enforceSensitiveText } from "@/lib/content-safety"
 import { reviewFriendLinkPlacement } from "@/lib/friend-link-auto-review"
 import { normalizeTrimmedText } from "@/lib/shared/normalizers"
-import { getSiteSettings } from "@/lib/site-settings"
+import { getSiteSettings, SITE_SETTINGS_CACHE_TAG } from "@/lib/site-settings"
+
+export const FRIEND_LINKS_CACHE_TAG = "friend-links"
 
 
 export interface FriendLinkItem {
@@ -95,7 +99,7 @@ function mapItem(item: Awaited<ReturnType<typeof findApprovedFriendLinks>>[numbe
   }
 }
 
-export async function getFriendLinkListData(compactLimit = 9): Promise<FriendLinkListData> {
+async function readFriendLinkListData(compactLimit = 9): Promise<FriendLinkListData> {
   const [compact, featured] = await Promise.all([
     findApprovedFriendLinks(compactLimit),
     findApprovedFriendLinks(),
@@ -108,7 +112,20 @@ export async function getFriendLinkListData(compactLimit = 9): Promise<FriendLin
   }
 }
 
-export async function getFriendLinkPageData() {
+const getPersistentFriendLinkListData = unstable_cache(
+  async (compactLimit: number) => readFriendLinkListData(compactLimit),
+  ["friend-links:list"],
+  {
+    tags: [FRIEND_LINKS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getFriendLinkListData(compactLimit = 9): Promise<FriendLinkListData> {
+  return getPersistentFriendLinkListData(compactLimit)
+}
+
+async function readFriendLinkPageData() {
   const [settings, links] = await Promise.all([
     getSiteSettings(),
     findApprovedFriendLinks(),
@@ -119,6 +136,27 @@ export async function getFriendLinkPageData() {
     announcement: settings.friendLinkAnnouncement,
     applicationEnabled: settings.friendLinkApplicationEnabled,
     links: links.map(mapItem),
+  }
+}
+
+const getPersistentFriendLinkPageData = unstable_cache(
+  readFriendLinkPageData,
+  ["friend-links:page"],
+  {
+    tags: [FRIEND_LINKS_CACHE_TAG, SITE_SETTINGS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getFriendLinkPageData() {
+  return getPersistentFriendLinkPageData()
+}
+
+export function revalidateFriendLinksCache() {
+  try {
+    revalidateTag(FRIEND_LINKS_CACHE_TAG, { expire: 0 })
+  } catch {
+    // Ignore when called outside a Next.js request context.
   }
 }
 

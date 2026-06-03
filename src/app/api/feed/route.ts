@@ -1,9 +1,12 @@
 import { apiSuccess, createRouteHandler } from "@/lib/api-route"
 import { buildHookedFeedDisplayItems } from "@/lib/addon-feed-posts"
-import { getCurrentUser } from "@/lib/auth"
+import { getSessionActorFromRequest } from "@/lib/auth"
 import { getLatestFeed, type FeedSort } from "@/lib/forum-feed"
 import { resolveAdminActorFromSessionUser } from "@/lib/moderator-permissions"
-import { attachPostListTipSummaries } from "@/lib/post-list-tipping"
+import {
+  attachPostListTipSummaries,
+  shouldAttachPostListTipSummaries,
+} from "@/lib/post-list-tipping"
 import { getSiteSettings } from "@/lib/site-settings"
 
 function parsePage(request: Request) {
@@ -19,7 +22,7 @@ function parseSort(request: Request): Exclude<FeedSort, "weekly"> {
 export const GET = createRouteHandler(async ({ request }) => {
   const page = parsePage(request)
   const sort = parseSort(request)
-  const [currentUser, settings] = await Promise.all([getCurrentUser(), getSiteSettings()])
+  const [currentUser, settings] = await Promise.all([getSessionActorFromRequest(request), getSiteSettings()])
   const result = await getLatestFeed(page, settings.homeFeedPostPageSize, sort, currentUser?.id, settings.homeHotRecentWindowHours, {
     userId: currentUser?.id ?? null,
     adminActor: await resolveAdminActorFromSessionUser(currentUser),
@@ -44,7 +47,9 @@ export const GET = createRouteHandler(async ({ request }) => {
 
   return apiSuccess({
     ...result,
-    items: await attachPostListTipSummaries(items, currentUser?.id),
+    items: shouldAttachPostListTipSummaries(settings.homeFeedPostListDisplayMode)
+      ? await attachPostListTipSummaries(items, currentUser?.id)
+      : items,
   })
 }, {
   errorMessage: "获取首页帖子失败",

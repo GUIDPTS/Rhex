@@ -336,12 +336,34 @@ export async function loadAddonsRuntimeFresh(): Promise<LoadedAddonRuntime[]> {
 }
 
 let addonsRegistryCacheVersion = 0
+let addonsRegistryProcessCache: {
+  version: number
+  promise: Promise<LoadedAddonsRegistry>
+} | null = null
 
-const loadAddonsRegistryCached = cache(async (cacheVersion: number) => {
-  void cacheVersion
-  const addons = await loadAddonsRuntimeFresh()
-  return buildLoadedAddonsRegistry(addons)
-})
+function loadAddonsRegistryProcessCached(cacheVersion: number) {
+  if (addonsRegistryProcessCache?.version === cacheVersion) {
+    return addonsRegistryProcessCache.promise
+  }
+
+  const promise = loadAddonsRuntimeFresh()
+    .then((addons) => buildLoadedAddonsRegistry(addons))
+    .catch((error) => {
+      if (addonsRegistryProcessCache?.version === cacheVersion) {
+        addonsRegistryProcessCache = null
+      }
+      throw error
+    })
+
+  addonsRegistryProcessCache = {
+    version: cacheVersion,
+    promise,
+  }
+
+  return promise
+}
+
+const loadAddonsRegistryCached = cache(loadAddonsRegistryProcessCached)
 
 export async function loadAddonsRegistry(): Promise<LoadedAddonsRegistry> {
   return loadAddonsRegistryCached(addonsRegistryCacheVersion)
@@ -349,6 +371,7 @@ export async function loadAddonsRegistry(): Promise<LoadedAddonsRegistry> {
 
 export function clearAddonsRuntimeCache() {
   addonsRegistryCacheVersion += 1
+  addonsRegistryProcessCache = null
 }
 
 export async function loadAddonsRuntime(): Promise<LoadedAddonRuntime[]> {

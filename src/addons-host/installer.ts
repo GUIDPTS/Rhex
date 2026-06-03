@@ -16,6 +16,7 @@ import {
   findLoadedAddonById,
   loadAddonsRuntimeFresh,
 } from "@/addons-host/runtime/loader"
+import { revalidateGlobalLayoutAddonSlotsCache } from "@/addons-host/runtime/global-layout-slot-cache"
 import {
   addonMayUseBackgroundJobs,
   cleanupAddonBackgroundJobs,
@@ -491,6 +492,7 @@ export async function installAddonFromZip(input: InstallAddonFromZipInput) {
     })
 
     clearAddonsRuntimeCache()
+    revalidateGlobalLayoutAddonSlotsCache()
     await syncAddonRegistryState()
     const addons = await loadAddonsRuntimeFresh()
     const installedAddon = addons.find((item) => item.manifest.id === manifest.id) ?? null
@@ -622,6 +624,7 @@ export async function removeInstalledAddon(addonId: string) {
   await cleanupAddonPersistentState(addonId)
   await deleteAddonRegistryRecord(addonId)
   clearAddonsRuntimeCache()
+  revalidateGlobalLayoutAddonSlotsCache()
 
   await executeAddonActionHook("addon.uninstalled.after", {
     addonId,

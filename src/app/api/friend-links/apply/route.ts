@@ -1,7 +1,7 @@
 import { revalidatePath } from "next/cache"
 
 import { apiSuccess, createRouteHandler, readJsonBody } from "@/lib/api-route"
-import { submitFriendLinkApplication } from "@/lib/friend-links"
+import { revalidateFriendLinksCache, submitFriendLinkApplication } from "@/lib/friend-links"
 import { resolveSiteOrigin } from "@/lib/site-origin"
 
 export const POST = createRouteHandler(async ({ request }) => {
@@ -16,6 +16,7 @@ export const POST = createRouteHandler(async ({ request }) => {
   })
 
   if (result.autoApproved) {
+    revalidateFriendLinksCache()
     revalidatePath("/")
     revalidatePath("/link")
   }

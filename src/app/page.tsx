@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { redirect } from "next/navigation"
 
 import {
   generateAddonHomeFeedMetadata,
@@ -7,14 +6,9 @@ import {
   HomeFeedPage,
 } from "@/app/home-feed-page"
 import { listAddonHomeFeedTabs } from "@/lib/addon-home-feed-providers"
-import {
-  buildAddonHomeFeedHref,
-  buildHomeFeedHref,
-  normalizeHomeFeedSort,
-  parseHomeFeedPage,
-} from "@/lib/home-feed-route"
 import { resolveDefaultAddonHomeFeedTab } from "@/lib/home-feed-tabs"
-import { readSearchParam } from "@/lib/search-params"
+
+export const revalidate = 30
 
 export async function generateMetadata(): Promise<Metadata> {
   const defaultAddonTab = resolveDefaultAddonHomeFeedTab(await listAddonHomeFeedTabs())
@@ -25,25 +19,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return generateHomeFeedMetadata("latest")
 }
 
-export default async function HomePage(props: PageProps<"/">) {
-  const searchParams = await props.searchParams
-  const rawSort = readSearchParam(searchParams?.sort)
-  const rawPage = readSearchParam(searchParams?.page)
+export default async function HomePage() {
   const defaultAddonTab = resolveDefaultAddonHomeFeedTab(await listAddonHomeFeedTabs())
-
-  if (rawSort !== undefined || rawPage !== undefined) {
-    if (defaultAddonTab && rawSort === undefined) {
-      redirect(
-        buildAddonHomeFeedHref(
-          defaultAddonTab.slug,
-          parseHomeFeedPage(rawPage),
-          true,
-        ),
-      )
-    }
-
-    redirect(buildHomeFeedHref(normalizeHomeFeedSort(rawSort), parseHomeFeedPage(rawPage)))
-  }
 
   if (defaultAddonTab) {
     return <HomeFeedPage addonTabSlug={defaultAddonTab.slug} autoCheckInOnEnter />

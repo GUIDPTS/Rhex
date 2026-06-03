@@ -10,6 +10,7 @@ import {
   clearAddonsRuntimeCache,
   loadAddonsRuntimeFresh,
 } from "@/addons-host/runtime/loader"
+import { revalidateGlobalLayoutAddonSlotsCache } from "@/addons-host/runtime/global-layout-slot-cache"
 import {
   buildAddonRelationCatalog,
   collectDependentAddonIssues,
@@ -312,6 +313,7 @@ function revalidateAddonManagementPaths(addonId: string) {
 
 function refreshAddonRuntime(addonId: string) {
   clearAddonsRuntimeCache()
+  revalidateGlobalLayoutAddonSlotsCache()
   revalidateAddonManagementPaths(addonId)
 }
 
@@ -340,6 +342,7 @@ function buildAddonRelationSnapshot(addons: LoadedAddonRuntime[]) {
 export async function runAddonManagementAction(action: AddonManagementAction, addonId?: string | null) {
   if (action === "sync") {
     clearAddonsRuntimeCache()
+    revalidateGlobalLayoutAddonSlotsCache()
     const count = await syncAddonRegistryState()
     revalidateAddonManagementPaths(addonId?.trim() || "")
     return {
@@ -349,7 +352,9 @@ export async function runAddonManagementAction(action: AddonManagementAction, ad
   }
 
   if (action === "clear-cache") {
+    clearAddonsRuntimeCache()
     const result = await clearRecoveredAddonErrors()
+    revalidateGlobalLayoutAddonSlotsCache()
     revalidateAddonManagementPaths(addonId?.trim() || "")
     // 额外刷掉 Next.js Full Route Cache：插件 slot（如 layout.body.end / home.right.top）
     // 分布在根 layout 和各页面，这里用 layout 级 revalidate 一次性清理所有被 SSR 缓存的页面，

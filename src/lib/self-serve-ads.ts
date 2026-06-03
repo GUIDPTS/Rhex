@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto"
 
+import { revalidateTag, unstable_cache } from "next/cache"
+
 export { SelfServeAdsIntroPage } from "@/components/self-serve-ads-intro-page"
 export { SelfServeAdsPurchasePage } from "@/components/self-serve-ads-purchase-page"
 export { SelfServeAdsSidebar } from "@/components/self-serve-ads-sidebar"
@@ -17,8 +19,9 @@ import { buildSelfServeAdPriceMap, getSelfServeAdPrice, toSelfServeAdConfig, val
 import { normalizeNonNegativeInteger, normalizePositiveInteger, normalizeTrimmedText } from "@/lib/shared/normalizers"
 
 import type { SelfServeAdItem, SelfServeAdPurchaseDraft, SelfServeAdSlotType, SelfServeAdsPanelData } from "@/lib/self-serve-ads.shared"
-import { getSiteSettings } from "@/lib/site-settings"
+import { getSiteSettings, SITE_SETTINGS_CACHE_TAG } from "@/lib/site-settings"
 
+export const SELF_SERVE_ADS_CACHE_TAG = "self-serve-ads"
 
 
 
@@ -56,7 +59,7 @@ function mergeSlots(slotType: SelfServeAdSlotType, slotCount: number, approved: 
   return Array.from({ length: slotCount }, (_, index) => grouped.get(index) ?? buildPlaceholder(slotType, index))
 }
 
-export async function getSelfServeAdsPanelData(): Promise<SelfServeAdsPanelData | null> {
+async function readSelfServeAdsPanelData(): Promise<SelfServeAdsPanelData | null> {
   const [appConfig, settings] = await Promise.all([loadSelfServeAdsAppConfig(), getSiteSettings()])
   const config = toSelfServeAdConfig(appConfig)
   if (!config.enabled) return null
@@ -71,6 +74,27 @@ export async function getSelfServeAdsPanelData(): Promise<SelfServeAdsPanelData 
     imageSlots: mergeSlots("IMAGE", config.imageSlotCount, approved),
     textSlots: mergeSlots("TEXT", config.textSlotCount, approved),
     prices: buildSelfServeAdPriceMap(config),
+  }
+}
+
+const getPersistentSelfServeAdsPanelData = unstable_cache(
+  readSelfServeAdsPanelData,
+  ["self-serve-ads:panel"],
+  {
+    tags: [SELF_SERVE_ADS_CACHE_TAG, SITE_SETTINGS_CACHE_TAG],
+    revalidate: 60,
+  },
+)
+
+export async function getSelfServeAdsPanelData(): Promise<SelfServeAdsPanelData | null> {
+  return getPersistentSelfServeAdsPanelData()
+}
+
+export function revalidateSelfServeAdsCache() {
+  try {
+    revalidateTag(SELF_SERVE_ADS_CACHE_TAG, { expire: 0 })
+  } catch {
+    // Ignore when called outside a Next.js request context.
   }
 }
 

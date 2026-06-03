@@ -935,6 +935,65 @@ function renderMarkdownChunk(markdown: MarkdownIt, source: string, env: Markdown
   return (markdown as MarkdownIt & { render: (input: string, renderEnv?: MarkdownRenderEnv) => string }).render(source, env)
 }
 
+function normalizeLooseOrderedBlockquoteItems(input: string) {
+  const lines = input.split("\n")
+  const output: string[] = []
+  let inFence = false
+
+  for (let index = 0; index < lines.length;) {
+    const line = lines[index]
+    const trimmed = line.trim()
+
+    if (/^(?:```|~~~)/.test(trimmed)) {
+      inFence = !inFence
+      output.push(line)
+      index += 1
+      continue
+    }
+
+    if (inFence) {
+      output.push(line)
+      index += 1
+      continue
+    }
+
+    const markerMatch = line.match(/^(\s*)(\d{1,9}[.)])\s*$/)
+    if (!markerMatch) {
+      output.push(line)
+      index += 1
+      continue
+    }
+
+    let quoteStartIndex = index + 1
+    while (quoteStartIndex < lines.length && lines[quoteStartIndex]?.trim() === "") {
+      quoteStartIndex += 1
+    }
+
+    const firstQuoteLine = lines[quoteStartIndex]
+    if (!firstQuoteLine || !/^\s*>/.test(firstQuoteLine)) {
+      output.push(line)
+      index += 1
+      continue
+    }
+
+    const [, markerIndent = "", marker = ""] = markerMatch
+    const continuationIndent = `${markerIndent}${" ".repeat(marker.length + 1)}`
+    let quoteIndex = quoteStartIndex
+
+    output.push(`${markerIndent}${marker} ${firstQuoteLine.trimStart()}`)
+    quoteIndex += 1
+
+    while (quoteIndex < lines.length && /^\s*>/.test(lines[quoteIndex] ?? "")) {
+      output.push(`${continuationIndent}${(lines[quoteIndex] ?? "").trimStart()}`)
+      quoteIndex += 1
+    }
+
+    index = quoteIndex
+  }
+
+  return output.join("\n")
+}
+
 function stripUnsafeScriptTags(html: string) {
   return html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -958,7 +1017,7 @@ export function isImageOnlyMarkdownHtml(html: string) {
 
 export function renderMarkdown(input: string, emojiItems: MarkdownEmojiItem[]) {
   const markdown = getMarkdownRenderer(emojiItems)
-  const normalizedInput = renderWavySyntax(renderRubySyntax(wrapHtmlDocumentBlocks(renderUserLinkTokens(input))))
+  const normalizedInput = normalizeLooseOrderedBlockquoteItems(renderWavySyntax(renderRubySyntax(wrapHtmlDocumentBlocks(renderUserLinkTokens(input)))))
   const escapedHtmlPlaceholders: EscapedHtmlPlaceholder[] = []
   const sanitizedInput = renderScratchMaskSyntax(sanitizeMarkdownInlineHtml(normalizedInput, escapedHtmlPlaceholders))
   const lines = sanitizedInput.split("\n")
@@ -1003,8 +1062,8 @@ export function renderMarkdown(input: string, emojiItems: MarkdownEmojiItem[]) {
     .replace(/<p align="left">/g, '<p align="left" class="my-3 leading-7 text-left text-foreground">')
     .replace(/<p align="center">/g, '<p align="center" class="my-3 leading-7 text-center text-foreground">')
     .replace(/<p align="right">/g, '<p align="right" class="my-3 leading-7 text-right text-foreground">')
-    .replace(/<ul>/g, '<ul class="md-list md-list-unordered">')
-    .replace(/<ol>/g, '<ol class="md-list md-list-ordered">')
+    .replace(/<ul(?!\s+class=)([^>]*)>/g, '<ul class="md-list md-list-unordered"$1>')
+    .replace(/<ol(?!\s+class=)([^>]*)>/g, '<ol class="md-list md-list-ordered"$1>')
     .replace(/<li>/g, '<li class="md-list-item">')
     .replace(/<a /g, '<a class="font-medium text-primary underline underline-offset-4 break-all" target="_blank" rel="noreferrer nofollow ugc" ')
     .replace(/<strong>/g, '<strong class="font-semibold text-foreground">')

@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { cookies, headers } from "next/headers"
 import { Suspense, type CSSProperties } from "react"
 
 import { BackToTopButton } from "@/components/back-to-top-button"
@@ -12,6 +11,7 @@ import { SiteSettingsProvider } from "@/components/site-settings-provider"
 import { ThemeProvider } from "@/components/theme-provider"
 import { DeferredToaster } from "@/components/deferred-toaster"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { GlobalLayoutAddonSlots } from "@/addons-host/client/global-layout-addon-slots"
 import { AddonRuntimeProvider } from "@/addons-host/client/addon-runtime-provider"
 import { RhexGlobalSdkBootstrap } from "@/addons-host/client/rhex-global-sdk"
 import {
@@ -21,17 +21,12 @@ import {
 import { listAddonSurfaceOverrideDescriptors } from "@/lib/addon-surface-overrides"
 
 
-import { getRssFeedUrl } from "@/lib/rss"
-
 import { resolveSiteIconPath } from "@/lib/site-branding"
-import { resolveSiteOrigin } from "@/lib/site-origin"
+import { getConfiguredSiteOrigin } from "@/lib/site-origin"
 import { getSidebarNavigationDisplayModeAttribute } from "@/lib/sidebar-navigation-preference"
 import { getPublishedCustomPageFooterHiddenPaths } from "@/lib/custom-pages"
 import { getSiteSettings } from "@/lib/site-settings"
-import { resolveThemeDefaultDeviceFromUserAgent, resolveThemeDocumentPropsFromCookieString } from "@/lib/theme"
 import { buildVipNameColorStyleVariables } from "@/lib/vip-name-colors"
-import { executeAddonSlot } from "@/addons-host/runtime/execute"
-import { AddonRenderBlock } from "@/addons-host/runtime/render"
 
 
 
@@ -60,12 +55,14 @@ const noScriptRootInitStyles = `
 `
 
 export async function generateMetadata(): Promise<Metadata> {
-  const [settings, rssUrl, siteOrigin] = await Promise.all([getSiteSettings(), getRssFeedUrl(), resolveSiteOrigin()])
+  const settings = await getSiteSettings()
+  const rssUrl = "/rss.xml"
+  const configuredSiteOrigin = getConfiguredSiteOrigin()
   const resolvedSiteIconPath = resolveSiteIconPath(settings.siteIconPath)
   const supportsAppleIcon = !/\.svg(?:$|[?#])/i.test(resolvedSiteIconPath)
 
   return {
-    metadataBase: new URL(siteOrigin),
+    ...(configuredSiteOrigin ? { metadataBase: new URL(configuredSiteOrigin) } : {}),
     title: `${settings.siteName} - ${settings.siteSlogan}`,
     description: settings.siteDescription,
     keywords: settings.siteSeoKeywords,
@@ -90,35 +87,16 @@ export async function generateMetadata(): Promise<Metadata> {
 
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const cookieStorePromise = cookies()
-  const headerStorePromise = headers()
-  const [settings, editorProviders, editorToolbarItems, addonSurfaceOverrides, footerHiddenPaths, cookieStore, headerStore] = await Promise.all([
+  const [settings, editorProviders, editorToolbarItems, addonSurfaceOverrides, footerHiddenPaths] = await Promise.all([
     getSiteSettings(),
     listAddonEditorProviderDescriptors(),
     listAddonEditorToolbarItemDescriptors(),
     listAddonSurfaceOverrideDescriptors(),
     getPublishedCustomPageFooterHiddenPaths(),
-    cookieStorePromise,
-    headerStorePromise,
-  ])
-  const requestPathname = headerStore.get("x-rhex-pathname") ?? undefined
-  const globalLayoutSlotProps = {
-    pathname: requestPathname,
-    userAgent: headerStore.get("user-agent") ?? "",
-  }
-  const [headBeforeBlocks, headAfterBlocks, bodyStartBlocks, bodyEndBlocks] = await Promise.all([
-    executeAddonSlot("layout.head.before", globalLayoutSlotProps, { pathname: requestPathname }),
-    executeAddonSlot("layout.head.after", globalLayoutSlotProps, { pathname: requestPathname }),
-    executeAddonSlot("layout.body.start", globalLayoutSlotProps, { pathname: requestPathname }),
-    executeAddonSlot("layout.body.end", globalLayoutSlotProps, { pathname: requestPathname }),
   ])
   const vipNameColorStyle = buildVipNameColorStyleVariables(settings.vipNameColors) as CSSProperties
   const sidebarDisplayMode = getSidebarNavigationDisplayModeAttribute(settings.leftSidebarDisplayMode)
   const themeRuntime = settings.theme
-  const themeDefaultDevice = resolveThemeDefaultDeviceFromUserAgent(headerStore.get("user-agent"))
-  const themeDocument = resolveThemeDocumentPropsFromCookieString(cookieStore.toString(), themeRuntime, {
-    device: themeDefaultDevice,
-  })
   const rhexSession = {
     isAuthenticated: false,
     user: null,
@@ -130,46 +108,24 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html
       lang="zh-CN"
       suppressHydrationWarning
-      className={cn("font-sans", geist.variable, themeDocument.rootClassName)}
-      style={themeDocument.rootStyle as CSSProperties}
-      data-root-init={themeDocument.requiresBootGuard ? "pending" : "ready"}
+      className={cn("font-sans", geist.variable)}
+      data-root-init="pending"
       data-sidebar-display-mode={sidebarDisplayMode}
-      data-theme-preset={themeDocument.dataThemePreset}
-      data-font-size-preset={themeDocument.dataFontSizePreset}
+      data-theme-preset={themeRuntime.preset}
+      data-font-size-preset={themeRuntime.fontSizePreset}
     >
       <head>
-        {headBeforeBlocks.map((block) => (
-          <AddonRenderBlock
-            key={`${block.addon.manifest.id}:${block.key}:head-before`}
-            addonId={block.addon.manifest.id}
-            blockKey={`${block.addon.manifest.id}:${block.key}:head-before`}
-            result={block.result}
-          />
-        ))}
         <noscript>
           <style>{noScriptRootInitStyles}</style>
         </noscript>
-        {headAfterBlocks.map((block) => (
-          <AddonRenderBlock
-            key={`${block.addon.manifest.id}:${block.key}:head-after`}
-            addonId={block.addon.manifest.id}
-            blockKey={`${block.addon.manifest.id}:${block.key}:head-after`}
-            result={block.result}
-          />
-        ))}
       </head>
       <body style={vipNameColorStyle}>
         <RhexGlobalSdkBootstrap session={rhexSession} site={rhexSite} />
         <RootBootstrap />
-        {bodyStartBlocks.map((block) => (
-          <AddonRenderBlock
-            key={`${block.addon.manifest.id}:${block.key}:body-start`}
-            addonId={block.addon.manifest.id}
-            blockKey={`${block.addon.manifest.id}:${block.key}:body-start`}
-            result={block.result}
-          />
-        ))}
-        <ThemeProvider defaultDevice={themeDefaultDevice} settings={themeRuntime}>
+        <Suspense fallback={null}>
+          <GlobalLayoutAddonSlots />
+        </Suspense>
+        <ThemeProvider settings={themeRuntime}>
           <CurrentUserProvider>
             <CurrentUserInboxProvider messageEnabled={settings.messageEnabled} messagePromptAudioPath={settings.messagePromptAudioPath}>
             <SiteSettingsProvider
@@ -189,14 +145,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <ConditionalSiteFooter hiddenPaths={footerHiddenPaths}>
                     <>
                       <SiteFooter />
-                      {bodyEndBlocks.map((block) => (
-                        <AddonRenderBlock
-                          key={`${block.addon.manifest.id}:${block.key}:body-end`}
-                          addonId={block.addon.manifest.id}
-                          blockKey={`${block.addon.manifest.id}:${block.key}:body-end`}
-                          result={block.result}
-                        />
-                      ))}
                     </>
                   </ConditionalSiteFooter>
                   <BackToTopButton />

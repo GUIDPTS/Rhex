@@ -1,5 +1,9 @@
+import { revalidateTag, unstable_cache } from "next/cache"
+
 import { countTaskDefinitions, listActiveTaskDefinitionsByConditionType } from "@/db/task-definition-queries"
 import { TaskConditionType, TaskCycleType } from "@/db/types"
+
+export const TASK_CHECK_IN_REWARD_CACHE_TAG = "task-check-in-reward"
 
 export interface TaskDrivenCheckInRewardRanges {
   normal: { min: number; max: number }
@@ -17,7 +21,7 @@ function createEmptyRanges(): TaskDrivenCheckInRewardRanges {
   }
 }
 
-export async function resolveTaskDrivenCheckInRewardRanges(now = new Date()): Promise<TaskDrivenCheckInRewardRanges | null> {
+async function resolveTaskDrivenCheckInRewardRangesFresh(now = new Date()): Promise<TaskDrivenCheckInRewardRanges | null> {
   const definitionCount = await countTaskDefinitions()
   if (definitionCount === 0) {
     return null
@@ -48,4 +52,49 @@ export async function resolveTaskDrivenCheckInRewardRanges(now = new Date()): Pr
       max: result.vip3.max + task.rewardVip3Max,
     },
   }), createEmptyRanges())
+}
+
+const getCachedTaskDrivenCheckInRewardRanges = unstable_cache(
+  async (todayKey: string): Promise<TaskDrivenCheckInRewardRanges | null> => {
+    const todayStart = new Date(`${todayKey}T00:00:00.000+08:00`)
+    const now = Number.isNaN(todayStart.getTime()) ? new Date() : todayStart
+    return resolveTaskDrivenCheckInRewardRangesFresh(now)
+  },
+  [TASK_CHECK_IN_REWARD_CACHE_TAG],
+  {
+    tags: [TASK_CHECK_IN_REWARD_CACHE_TAG],
+  },
+)
+
+function getLocalDateKey(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+  return formatter.format(date)
+}
+
+export async function resolveTaskDrivenCheckInRewardRanges(now = new Date()): Promise<TaskDrivenCheckInRewardRanges | null> {
+  try {
+    return await getCachedTaskDrivenCheckInRewardRanges(getLocalDateKey(now))
+  } catch (error) {
+    if (
+      error instanceof Error
+      && error.message.includes("Invariant: incrementalCache missing in unstable_cache")
+    ) {
+      return resolveTaskDrivenCheckInRewardRangesFresh(now)
+    }
+
+    throw error
+  }
+}
+
+export function revalidateTaskCheckInRewardCache() {
+  try {
+    revalidateTag(TASK_CHECK_IN_REWARD_CACHE_TAG, { expire: 0 })
+  } catch {
+    // Ignore when called by scripts outside a Next.js request context.
+  }
 }

@@ -10,9 +10,12 @@ import {
 import { ForumFeedView } from "@/components/forum/forum-feed-view"
 import { ForumPageShell } from "@/components/forum/forum-page-shell"
 import { InfiniteForumFeed } from "@/components/forum/infinite-forum-feed"
-import { AutoCheckInOnHomeEnter } from "@/components/home/auto-check-in-on-home-enter"
+import { AutoCheckInOnHomeEnterCurrentUser } from "@/components/home/auto-check-in-on-home-enter-current-user"
 import { HomeFeedTabs } from "@/components/home/home-feed-tabs"
-import { HomeSidebarPanels } from "@/components/home/home-sidebar-panels"
+import {
+  buildHomeSidebarCurrentUserSettings,
+  HomeSidebarPanels,
+} from "@/components/home/home-sidebar-panels"
 import { PageNumberPagination } from "@/components/page-number-pagination"
 import { RssUniverseFeedView } from "@/components/rss/rss-universe-feed-view"
 import { RssUniversePageClient } from "@/components/rss/rss-universe-page-client"
@@ -29,7 +32,6 @@ import {
   renderAddonHomeFeedTab,
 } from "@/lib/addon-home-feed-providers"
 import { getCurrentUser } from "@/lib/auth"
-import { hasHomeAutoCheckInBadgeEffect } from "@/lib/badge-functional-effects"
 import { getBoards } from "@/lib/boards"
 import { getLocalDateKey } from "@/lib/date-key"
 import { getFriendLinkListData } from "@/lib/friend-links"
@@ -44,11 +46,14 @@ import {
   buildResolvedHomeFeedTabs,
   resolveDefaultAddonHomeFeedTab,
 } from "@/lib/home-feed-tabs"
-import { getHomeSidebarHotTopics, resolveSidebarUser } from "@/lib/home-sidebar"
+import { getHomeSidebarHotTopics } from "@/lib/home-sidebar"
 import { groupHomeSidebarPanels } from "@/lib/home-sidebar-layout"
 import { getHomeSidebarStats } from "@/lib/home-sidebar-stats"
 import { POST_LIST_LOAD_MODE_INFINITE } from "@/lib/post-list-load-mode"
-import { attachPostListTipSummaries } from "@/lib/post-list-tipping"
+import {
+  attachPostListTipSummaries,
+  shouldAttachPostListTipSummaries,
+} from "@/lib/post-list-tipping"
 import { resolveAdminActorFromSessionUser } from "@/lib/moderator-permissions"
 import { getRssHomeDisplaySettings } from "@/lib/rss-harvest"
 import { getRssUniverseFeedPage } from "@/lib/rss-public-feed"
@@ -71,6 +76,7 @@ const HOME_FEED_LABELS: Record<HomeFeedSort, string> = {
 interface HomeFeedPageProps {
   sort?: HomeFeedSort
   addonTabSlug?: string
+  page?: number | string | string[]
   searchParams?: Promise<{ page?: string | string[]; source?: string | string[] }>
   mainTopSlot?: ReactNode
   autoCheckInOnEnter?: boolean
@@ -125,13 +131,14 @@ export async function generateAddonHomeFeedMetadata(
 export async function HomeFeedPage({
   sort,
   addonTabSlug,
+  page,
   searchParams,
   mainTopSlot,
   autoCheckInOnEnter = false,
   enableUniverseSourceFilter = false,
 }: HomeFeedPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined
-  const rawPage = resolvedSearchParams?.page
+  const rawPage = resolvedSearchParams?.page ?? page
   const rawUniverseSource = resolvedSearchParams?.source
   const currentPage = parseHomeFeedPage(rawPage)
   const currentUniverseSourceId = typeof rawUniverseSource === "string" ? rawUniverseSource.trim() : ""
@@ -140,7 +147,6 @@ export async function HomeFeedPage({
     throw new Error("HomeFeedPage requires sort or addonTabSlug")
   }
 
-  const currentUserPromise = getCurrentUser()
   const settingsPromise = getSiteSettings()
   const rssHomeSettingsPromise = getRssHomeDisplaySettings()
   const addonTabsPromise = listAddonHomeFeedTabs()
@@ -151,7 +157,6 @@ export async function HomeFeedPage({
   const [
     boards,
     zones,
-    currentUser,
     hotTopics,
     announcements,
     settings,
@@ -163,7 +168,6 @@ export async function HomeFeedPage({
   ] = await Promise.all([
     getBoards(),
     getZones(),
-    currentUserPromise,
     hotTopicsPromise,
     getHomeAnnouncements(3),
     settingsPromise,
@@ -211,11 +215,19 @@ export async function HomeFeedPage({
     redirect(buildHomeFeedHref("latest"))
   }
 
+  const needsServerCurrentUser =
+    currentSort === "following"
+    || (currentSort === "universe" && !enableUniverseSourceFilter)
+    || Boolean(currentSort && shouldAttachPostListTipSummaries(settings.homeFeedPostListDisplayMode))
+  const currentUser = needsServerCurrentUser ? await getCurrentUser() : null
   const addonHookSearchParams = buildAddonHookSearchParams(resolvedSearchParams)
-  const postListViewer = {
-    userId: currentUser?.id ?? null,
-    adminActor: await resolveAdminActorFromSessionUser(currentUser),
-  }
+  const adminActor = currentUser ? await resolveAdminActorFromSessionUser(currentUser) : null
+  const postListViewer = currentUser
+    ? {
+        userId: currentUser.id,
+        adminActor,
+      }
+    : null
   const postFeedPage =
     currentSort && currentSort !== "universe"
       ? await getLatestFeed(
@@ -268,23 +280,16 @@ export async function HomeFeedPage({
             searchParams: addonHookSearchParams,
           })
 
-          return attachPostListTipSummaries(displayItems, currentUser?.id)
+          return shouldAttachPostListTipSummaries(settings.homeFeedPostListDisplayMode)
+            ? attachPostListTipSummaries(displayItems, currentUser?.id)
+            : displayItems
         })()
       : null
 
   const selfServeAdsResolvedConfig = toSelfServeAdConfig(selfServeAdsConfig)
-  const [sidebarUser, sidebarStats] = await Promise.all([
-    resolveSidebarUser(currentUser, settings),
-    settings.homeSidebarStatsCardEnabled
-      ? getHomeSidebarStats()
-      : Promise.resolve(null),
-  ])
-  const shouldAutoCheckIn =
-    autoCheckInOnEnter
-    && Boolean(currentUser?.id)
-    && Boolean(settings.checkInEnabled)
-    && !Boolean(sidebarUser?.checkedInToday)
-    && (await hasHomeAutoCheckInBadgeEffect(currentUser?.id))
+  const sidebarStats = settings.homeSidebarStatsCardEnabled
+    ? await getHomeSidebarStats()
+    : null
   const sidebarPanels = groupHomeSidebarPanels(
     selfServeAdsPanelData
       && selfServeAdsResolvedConfig.enabled
@@ -441,13 +446,10 @@ export async function HomeFeedPage({
 
   return (
     <div className="min-h-screen bg-background">
-      {currentUser?.id && shouldAutoCheckIn ? (
-        <AutoCheckInOnHomeEnter
-          enabled
-          todayKey={getLocalDateKey()}
-          userId={currentUser.id}
-        />
-      ) : null}
+      <AutoCheckInOnHomeEnterCurrentUser
+        enabled={autoCheckInOnEnter && settings.checkInEnabled}
+        todayKey={getLocalDateKey()}
+      />
       <SiteHeader />
 
       <div className="mx-auto max-w-[1200px] px-1">
@@ -501,7 +503,7 @@ export async function HomeFeedPage({
                   }}
                 >
                   <HomeSidebarPanels
-                    user={sidebarUser}
+                    user={null}
                     hotTopics={hotTopics}
                     postLinkDisplayMode={settings.postLinkDisplayMode}
                     announcements={announcements}
@@ -516,6 +518,7 @@ export async function HomeFeedPage({
                     siteDescription={settings.siteDescription}
                     siteLogoPath={settings.siteLogoPath}
                     siteIconPath={settings.siteIconPath}
+                    currentUserSettings={buildHomeSidebarCurrentUserSettings(settings)}
                     selfServeAdsSurface={false}
                   />
                 </AddonSurfaceRenderer>

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache"
 
 import { apiSuccess, createAdminRouteHandler, readJsonBody } from "@/lib/api-route"
 import { revalidateSiteSettingsCache } from "@/lib/admin-site-settings-shared"
+import { revalidateTaskCheckInRewardCache } from "@/lib/task-check-in-display"
 import {
   duplicateAdminTaskDefinition,
   getAdminTaskList,
@@ -25,6 +26,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
     const id = typeof body.id === "string" ? body.id : ""
     const task = await duplicateAdminTaskDefinition(id)
     revalidateSiteSettingsCache()
+    revalidateTaskCheckInRewardCache()
     revalidatePath("/tasks")
     revalidatePath("/admin")
     revalidatePath("/admin/settings/vip/tasks")
@@ -36,6 +38,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
     const status = typeof body.status === "string" ? body.status : ""
     const task = await updateAdminTaskStatus(id, status)
     revalidateSiteSettingsCache()
+    revalidateTaskCheckInRewardCache()
     revalidatePath("/tasks")
     revalidatePath("/admin")
     revalidatePath("/admin/settings/vip/tasks")
@@ -44,6 +47,7 @@ export const POST = createAdminRouteHandler(async ({ request }) => {
 
   const task = await saveAdminTaskDefinition(body)
   revalidateSiteSettingsCache()
+  revalidateTaskCheckInRewardCache()
   revalidatePath("/tasks")
   revalidatePath("/admin")
   revalidatePath("/admin/settings/vip/tasks")

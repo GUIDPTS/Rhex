@@ -19,6 +19,7 @@ import {
   resolveSafeAddonChildPath,
 } from "@/addons-host/runtime/fs"
 import { readAddonConfigValue, writeAddonConfigValue } from "@/addons-host/runtime/config"
+import { revalidateGlobalLayoutAddonSlotsCache } from "@/addons-host/runtime/global-layout-slot-cache"
 import { addonHasPermission } from "@/addons-host/runtime/permissions"
 import { readAddonSecretValue, writeAddonSecretValue } from "@/addons-host/runtime/secrets"
 import {
@@ -178,6 +179,7 @@ export function buildAddonExecutionContext(addon: LoadedAddonRuntime, input?: {
         throwOnError: true,
       })
       await writeAddonConfigValue(addon.manifest.id, configKey, value)
+      revalidateGlobalLayoutAddonSlotsCache()
       await executeAddonActionHook("addon.config.changed.after", {
         addonId: addon.manifest.id,
         configKey,

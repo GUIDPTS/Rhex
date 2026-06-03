@@ -10,7 +10,11 @@ export function normalizeHomeFeedSort(sort?: string): HomeFeedSort {
   return "latest"
 }
 
-export function parseHomeFeedPage(value: string | string[] | undefined) {
+export function parseHomeFeedPage(value: number | string | string[] | undefined) {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value >= 1 ? value : 1
+  }
+
   const rawValue = Array.isArray(value) ? value[0] : value
   const page = Number(rawValue)
 
@@ -26,6 +30,10 @@ export function buildHomeFeedHref(sort: HomeFeedSort, page = 1) {
 
   if (normalizedPage <= 1) {
     return `/${sort}`
+  }
+
+  if (sort === "latest" || sort === "new" || sort === "hot") {
+    return `/${sort}/page/${normalizedPage}`
   }
 
   return `/${sort}?page=${normalizedPage}`

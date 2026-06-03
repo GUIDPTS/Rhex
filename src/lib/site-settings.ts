@@ -1,6 +1,7 @@
 import "server-only"
 
 import { unstable_cache } from "next/cache"
+import { cache } from "react"
 
 import { listActiveGiftDefinitions } from "@/db/post-gift-queries"
 import { createSiteSettingsRecord, findSensitiveWordsPage, findSiteSettingsRecord, getSensitiveWordStats } from "@/db/site-settings-queries"
@@ -791,13 +792,19 @@ async function applyTaskDrivenCheckInRewardSettings(data: ServerSiteSettingsData
   }
 }
 
+const getCachedServerSiteSettings = cache(resolveServerSiteSettings)
+
+const getCachedPublicSiteSettings = cache(async (): Promise<SiteSettingsData> => {
+  return toPublicSiteSettings(await getCachedServerSiteSettings())
+})
+
 export async function getSiteSettings(): Promise<SiteSettingsData> {
-  return toPublicSiteSettings(await resolveServerSiteSettings())
+  return getCachedPublicSiteSettings()
 }
 
 /** 仅服务端内部使用（mailer、lottery 等），包含 smtp 等敏感字段，禁止序列化到客户端 */
 export async function getServerSiteSettings(): Promise<ServerSiteSettingsData> {
-  return resolveServerSiteSettings()
+  return getCachedServerSiteSettings()
 }
 
 export async function getSensitiveWordPage(options: { page?: number; pageSize?: number } = {}) {

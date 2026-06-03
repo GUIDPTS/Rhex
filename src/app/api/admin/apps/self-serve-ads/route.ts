@@ -6,9 +6,10 @@ import { revalidateSiteSettingsCache } from "@/lib/admin-site-settings-shared"
 export const dynamic = "force-dynamic"
 
 import { updateSelfServeAdsAppConfig } from "@/lib/app-config"
-import { getSelfServeAdsAdminData, reviewSelfServeAdOrder } from "@/lib/self-serve-ads"
+import { getSelfServeAdsAdminData, revalidateSelfServeAdsCache, reviewSelfServeAdOrder } from "@/lib/self-serve-ads"
 
 function revalidateSelfServeAdsDisplayPaths() {
+  revalidateSelfServeAdsCache()
   revalidatePath("/", "layout")
   revalidatePath("/posts/[slug]", "page")
   revalidatePath("/admin/apps/self-serve-ads")
